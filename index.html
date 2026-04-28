@@ -1,0 +1,354 @@
+﻿<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Encontre sua Célula | Maanaim Alphaville</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        :root { 
+            --primary: #1e365a; 
+            --gold: #d4bc6a; 
+            --bg-light: #f4f7f9;
+        }
+        
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            margin: 0; 
+            background: var(--bg-light); 
+        }
+
+        /* Estilização do Header com a Logo */
+        .header { 
+            background: #fff; 
+            padding: 20px 10px; 
+            text-align: center; 
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1); 
+        }
+        
+        .logo { 
+            max-width: 180px; /* Tamanho ajustado para a logo */
+            height: auto;
+        }
+
+        .container { 
+            padding: 15px; 
+            max-width: 600px; 
+            margin: auto; 
+        }
+
+        .intro-text { 
+            text-align: center; 
+            margin: 20px 0; 
+            color: var(--primary); 
+        }
+
+        #map { 
+            height: 380px; 
+            border-radius: 20px; 
+            margin-bottom: 20px; 
+            z-index: 1; 
+            border: 3px solid #fff;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+
+        .form-box { 
+            background: #fff; 
+            padding: 25px; 
+            border-radius: 20px; 
+            box-shadow: 0 8px 20px rgba(0,0,0,0.05); 
+        }
+
+        h3 { color: var(--primary); margin-top: 0; }
+
+        input { 
+            width: 100%; 
+            padding: 14px; 
+            margin: 10px 0; 
+            border: 1px solid #ddd; 
+            border-radius: 10px; 
+            box-sizing: border-box;
+            font-size: 16px; /* Evita zoom automático no iOS */
+        }
+
+        .btn { 
+            width: 100%; 
+            padding: 16px; 
+            background: var(--primary); 
+            color: #fff; 
+            border: none; 
+            border-radius: 30px; 
+            font-weight: bold; 
+            font-size: 16px;
+            cursor: pointer; 
+            transition: 0.3s;
+            margin-top: 10px;
+        }
+
+        .btn:hover { background: #152946; }
+
+        .info-card { 
+            background: white; 
+            padding: 20px; 
+            border-radius: 15px; 
+            border-left: 6px solid var(--gold); 
+            margin-top: 20px; 
+            display: none; 
+            animation: fadeIn 0.5s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .btn-wa { 
+            background: #25d366; 
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+		.leaflet-tooltip {
+    background: #1e365a;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+    font-size: 14px;
+}
+.leaflet-tooltip-top:before {
+    border-top-color: #1e365a; /* Ajusta a setinha do balão */
+}
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <img src="logo.png" alt="Maanaim Alphaville" class="logo">
+</div>
+
+<div class="container">
+    <div id="step1" class="form-box">
+        <h3>Encontre sua Célula</h3>
+        <p style="color: #666; font-size: 0.9rem;">Olá! Preencha seus dados para localizarmos as células mais próximas.</p>
+        <input type="text" id="nome" placeholder="Seu Nome completo">
+        <input type="tel" id="tel" placeholder="Seu WhatsApp (Ex: 11999999999)">
+		<input type="tel" id="cep" placeholder="Seu CEP (apenas números)" maxlength="8">
+        <button class="btn" onclick="iniciarBusca()">LOCALIZAR CÉLULAS</button>
+    </div>
+
+    <div id="step2" style="display:none;">
+        <div class="intro-text">
+            <h3>Células próximas a você</h3>
+            <p>Selecione um ponto no mapa para ver detalhes.</p>
+        </div>
+        
+        <div id="map"></div>
+
+        <div id="detalhesCelula" class="info-card">
+            <h4 id="displayNome" style="margin: 0 0 5px 0;"></h4>
+            <p id="displayLider" style="margin: 0 0 15px 0; color: #555;"></p>
+            <button class="btn btn-wa" id="btnNotificar">
+                <i class="fa-brands fa-whatsapp"></i> QUERO VISITAR
+            </button>
+        </div>
+    </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<script>
+    // Configurações do seu projeto Supabase
+    const SUPABASE_URL = 'https://undbtcyrqzdidrbtcwna.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_UjC_OdZp4hj4XV_i5wmt2A_jl58Mk74';
+    const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    let map;
+
+async function iniciarBusca() {
+    const nome = document.getElementById('nome').value.trim();
+    const tel = document.getElementById('tel').value.trim();
+    const cepInput = document.getElementById('cep').value.replace(/\D/g, ''); // Remove tudo que não é número
+
+    // 1. Validação do CEP (deve ter exatamente 8 dígitos)
+    if (!nome || !tel) {
+        return alert("Por favor, preencha seu nome e WhatsApp.");
+    }
+    
+    if (cepInput.length !== 8) {
+        return alert("Por favor, informe um CEP válido com 8 dígitos.");
+    }
+
+    // 2. Transformar CEP em Lat/Lng (Geocodificação)
+    try {
+        // Usamos a API do ViaCEP para validar se o CEP existe e a Nominatim para converter em coordenadas
+        const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&postalcode=${cepInput}&country=brazil`);
+        const data = await response.json();
+
+        if (data && data.length > 0) {
+            const latVis = parseFloat(data[0].lat);
+            const lngVis = parseFloat(data[0].lon);
+
+            // Se o CEP for válido, avançamos para o mapa
+            document.getElementById('step1').style.display = 'none';
+            document.getElementById('step2').style.display = 'block';
+
+            // Inicia o mapa centralizado na casa do visitante
+            configurarMapa(latVis, lngVis);
+            
+            // Carrega as células do Supabase
+            await carregarCelulas();
+        } else {
+            alert("Não conseguimos localizar esse CEP no mapa. Verifique se os números estão corretos.");
+        }
+    } catch (error) {
+        console.error("Erro na geocodificação:", error);
+        alert("Erro ao buscar localização. Tente novamente em instantes.");
+    }
+}
+
+function configurarMapa(lat, lng) {
+    // Se o mapa já existir (para evitar erro de reinicialização), removemos
+    if (map) { map.remove(); }
+
+    map = L.map('map').setView([lat, lng], 14);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap'
+    }).addTo(map);
+
+    // Coloca um marcador diferente na posição do visitante
+    const casaIcon = L.divIcon({
+        html: '<i class="fa-solid fa-house-user" style="color: #1e365a; font-size: 24px;"></i>',
+        className: 'custom-div-icon',
+        iconSize: [30, 30],
+        iconAnchor: [15, 15]
+    });
+
+    L.marker([lat, lng], { icon: casaIcon }).addTo(map).bindPopup("Sua Localização").openPopup();
+}
+
+ async function carregarCelulas() {
+    let { data: celulas, error } = await _supabase.from('celulas').select('*');
+    if (error) return console.error(error);
+
+    celulas.forEach(cel => {
+        const cor = cel.status === 'disponivel' ? '#25d366' : '#ff4b2b';
+        
+        const marker = L.circleMarker([cel.lat, cel.lng], {
+            color: cor,
+            fillColor: cor,
+            fillOpacity: 0.8,
+            radius: 12
+        }).addTo(map);
+
+        // --- NOVIDADE: INFORMAÇÃO AO PASSAR O MOUSE ---
+        // BindTooltip cria aquela etiqueta que flutua sobre o ponto
+        marker.bindTooltip(`
+            <div style="font-family: sans-serif; padding: 5px;">
+                <strong>${cel.nome}</strong><br>
+                <span>📅 Dia: ${cel.dia || 'A definir'}</span><br>
+                <small>Status: ${cel.status}</small>
+            </div>
+        `, {
+            direction: 'top',
+            sticky: false, // Se true, segue o mouse. Se false, fica fixo sobre o ponto.
+            opacity: 0.9
+        });
+
+        // Evento para abrir ao passar o mouse
+        marker.on('mouseover', function (e) {
+            this.openTooltip();
+        });
+
+        // Evento para fechar ao tirar o mouse
+        marker.on('mouseout', function (e) {
+            this.closeTooltip();
+        });
+
+        // Mantém o clique para abrir os detalhes embaixo
+        marker.on('click', () => {
+            if(cel.status !== 'disponivel') return alert("Esta célula está lotada.");
+            
+            document.getElementById('detalhesCelula').style.display = 'block';
+            document.getElementById('displayNome').innerHTML = `${cel.nome} <br><small style="color:#666">Encontros: ${cel.dia || 'Não informado'}</small>`;
+            document.getElementById('displayLider').innerText = "Líder: " + cel.lider;
+            
+            document.getElementById('btnNotificar').onclick = () => {
+                const nomeVis = document.getElementById('nome').value;
+                const msg = encodeURIComponent(`Olá ${cel.lider}! Meu nome é ${nomeVis}. Vi a célula de ${cel.dia} no mapa e gostaria de visitar!`);
+                window.open(`https://wa.me/${cel.whatsapp.replace(/\D/g,'')}?text=${msg}`);
+            };
+			
+			
+// Esta parte deve ficar dentro do marker.on('click', ...)
+function exibirDadosDaCelula(cel) {
+    const card = document.getElementById('detalhesCelula');
+    card.style.display = 'block';
+    
+    document.getElementById('displayNome').innerHTML = `
+        ${cel.nome} <br>
+        <small style="color:var(--gold); font-weight:bold;">
+            <i class="fa-regular fa-calendar"></i> Encontros: ${cel.dia || 'A definir'}
+        </small>
+    `;
+    document.getElementById('displayLider').innerText = "Líder: " + cel.lider;
+    
+    const btn = document.getElementById('btnNotificar');
+    
+    btn.onclick = () => {
+        // 1. Captura os dados que o visitante digitou no início
+        const nomeVis = document.getElementById('nome').value;
+        const telVis = document.getElementById('tel').value;
+        
+        // 2. Limpa o número de telefone do líder (remove parênteses, espaços e traços)
+        const foneLimpo = cel.whatsapp.replace(/\D/g, '');
+        
+        // 3. Monta a mensagem personalizada
+        const texto = `Olá ${cel.lider}! 
+Meu nome é *${nomeVis}* e vi sua célula no mapa da Maanaim. 
+Gostaria de participar do encontro de *${cel.dia}*. 
+Meu contato é: ${telVis}. 
+Pode me passar o endereço completo?`;
+
+        const msgEncoded = encodeURIComponent(texto);
+        
+        // 4. Abre o WhatsApp (funciona em PC e Celular)
+        window.open(`https://wa.me/${foneLimpo}?text=${msgEncoded}`, '_blank');
+    };
+}			
+			
+        });
+    });
+}
+
+    function exibirDadosDaCelula(cel) {
+        document.getElementById('detalhesCelula').style.display = 'block';
+        document.getElementById('displayNome').innerText = cel.nome;
+        document.getElementById('displayLider').innerText = "Líder: " + cel.lider;
+        
+        const btn = document.getElementById('btnNotificar');
+        btn.style.display = 'block';
+        btn.onclick = () => {
+            const nomeVis = document.getElementById('nome').value;
+            const telVis = document.getElementById('tel').value;
+            const msg = encodeURIComponent(`Olá ${cel.lider}! Meu nome é ${nomeVis}. Vi sua célula no mapa da Maanaim e gostaria de visitar! Meu WhatsApp é ${telVis}.`);
+            window.open(`https://wa.me/${cel.whatsapp.replace(/\D/g,'')}?text=${msg}`);
+        };
+    }
+
+    async function centralizarNoVisitante(cep) {
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&postalcode=${cep}&country=brazil`);
+        const data = await res.json();
+        if(data.length > 0) {
+            map.setView([data[0].lat, data[0].lon], 15);
+            L.marker([data[0].lat, data[0].lon], { opacity: 0.7 }).addTo(map).bindPopup("Sua localização aproximada").openPopup();
+        }
+    }
+</script>
+
+</body>
+</html>
