@@ -277,13 +277,57 @@ function configurarMapa(lat, lng) {
             document.getElementById('displayNome').innerHTML = `${cel.nome} <br><small style="color:#666">Encontros: ${cel.dia || 'Não informado'}</small>`;
             document.getElementById('displayLider').innerText = "Líder: " + cel.lider;
             
-            document.getElementById('btnNotificar').onclick = () => {
-                const nomeVis = document.getElementById('nome').value;
-                const msg = encodeURIComponent(`Olá ${cel.lider}! Meu nome é ${nomeVis}. Vi a célula de ${cel.dia} no mapa e gostaria de visitar!`);
-                window.open(`https://wa.me/${cel.whatsapp.replace(/\D/g,'')}?text=${msg}`);
-            };
-			
-			
+document.getElementById('btnNotificar').onclick = async () => {
+    // 1. Bloqueia o botão para evitar cliques duplos
+    const btn = document.getElementById('btnNotificar');
+    btn.disabled = true;
+    btn.innerText = "Enviando...";
+
+    // 2. Coleta os dados que já temos
+    const dadosInteresse = {
+        nome_visitante: document.getElementById('nome').value,
+        whatsapp_visitante: document.getElementById('tel').value,
+        cep_visitante: document.getElementById('cep').value,
+        celula_escolhida: cel.nome,
+        lider_celula: cel.lider,
+        data_envio: new Date()
+    };
+
+    try {
+        // 3. Envia para o Supabase de forma silenciosa
+        const { error } = await _supabase
+            .from('interesses')
+            .insert([dadosInteresse]);
+
+        if (error) throw error;
+
+        // 4. Sucesso! Esconde o mapa e mostra a mensagem final
+        exibirTelaFinal();
+
+    } catch (err) {
+        console.error("Erro ao salvar:", err);
+        alert("Ocorreu um erro. Tente novamente.");
+        btn.disabled = false;
+        btn.innerText = "QUERO VISITAR";
+    }
+};
+
+function exibirTelaFinal() {
+    // Esconde tudo e mostra uma mensagem amigável
+    document.getElementById('step2').style.display = 'none';
+    
+    const container = document.querySelector('.container');
+    container.innerHTML = `
+        <div class="form-box" style="text-align: center; animation: fadeIn 0.8s;">
+            <i class="fa-solid fa-circle-check" style="font-size: 50px; color: #25d366; margin-bottom: 20px;"></i>
+            <h3 style="color: #1e365a;">Tudo pronto!</h3>
+            <p>Os seus dados foram enviados com sucesso para o líder da célula.</p>
+            <p style="color: #666;">Fique atento ao seu WhatsApp, em breve entraremos em contato para te passar o endereço completo!</p>
+            <br>
+            <button class="btn" onclick="location.reload()">VOLTAR AO INÍCIO</button>
+        </div>
+    `;
+}
 // Esta parte deve ficar dentro do marker.on('click', ...)
 function exibirDadosDaCelula(cel) {
     const card = document.getElementById('detalhesCelula');
