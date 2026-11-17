@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mapa Estratégico de Células & Remanejamento — Maanaim</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root {
+    --navy: #1e365a;
+    --navy-dark: #13243d;
+    --gold: #d4bc6a;
+    --bg: #f3f5f9;
+    --card: #ffffff;
+    --text: #1f2937;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+    --green: #10b981;
+    --amber: #f59e0b;
+    --red: #ef4444;
+    --blue: #2563eb;
+    --purple: #7c3aed;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+  
+  /* Header */
+  header {
+    background: var(--navy);
+    color: #fff;
+    padding: 12px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    z-index: 1000;
+  }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand i { color: var(--gold); font-size: 1.4rem; }
+  .brand h1 { font-size: 1.05rem; font-weight: 700; letter-spacing: -0.01em; }
+  .brand span { font-size: 0.78rem; color: #cbd5e1; display: block; }
+  
+  .header-tabs { display: flex; gap: 8px; }
+  .tab-btn {
+    background: rgba(255,255,255,0.12);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.2);
+    padding: 7px 14px;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: 0.2s;
+  }
+  .tab-btn.active, .tab-btn:hover { background: var(--gold); color: var(--navy-dark); border-color: var(--gold); }
+
+  /* Main layout */
+  .main-wrapper { display: flex; flex: 1; overflow: hidden; }
+  
+  /* Sidebar */
+  aside {
+    width: 360px;
+    background: var(--card);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    z-index: 500;
+  }
+  .sidebar-section { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+  .sidebar-section h2 { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin-bottom: 10px; }
+  
+  .control-group { margin-bottom: 10px; }
+  .control-group label { display: flex; justify-content: space-between; font-size: 0.82rem; font-weight: 600; margin-bottom: 4px; }
+  input[type="range"] { width: 100%; accent-color: var(--navy); cursor: pointer; }
+  
+  .filter-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pill {
+    font-size: 0.75rem;
+    padding: 5px 9px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: #f9fafb;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-weight: 500;
+    user-select: none;
+  }
+  .pill.active { background: #eff6ff; border-color: var(--blue); color: var(--navy); font-weight: 600; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+
+  .search-input {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 0.82rem;
+    margin-bottom: 8px;
+  }
+
+  .celula-list { flex: 1; overflow-y: auto; padding: 8px 12px; }
+  .celula-item {
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: 0.15s;
+    background: #fff;
+  }
+  .celula-item:hover { border-color: var(--navy); background: #f8fafc; }
+  .celula-item.selected { border: 2px solid var(--navy); background: #eff6ff; }
+  .celula-item-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+  .celula-name { font-weight: 700; font-size: 0.88rem; color: var(--navy); }
+  .badge-cep { font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; background: #e2e8f0; color: #334155; font-weight: 600; }
+  .badge-sede { background: #fef3c7; color: #92400e; }
+  .celula-meta { font-size: 0.75rem; color: var(--muted); display: flex; justify-content: space-between; }
+
+  /* Map & Right Panel */
+  .content-area { flex: 1; position: relative; display: flex; flex-direction: column; overflow: hidden; }
+  #map { flex: 1; width: 100%; z-index: 1; }
+
+  /* Floating Stats Card on Map */
+  .map-overlay-card {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    width: 340px;
+    max-height: calc(100% - 28px);
+    background: rgba(255, 255, 255, 0.97);
+    backdrop-filter: blur(6px);
+    border-radius: 12px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.14);
+    border: 1px solid var(--border);
+    z-index: 800;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .overlay-header {
+    background: var(--navy);
+    color: #fff;
+    padding: 12px 15px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .overlay-header h3 { font-size: 0.9rem; font-weight: 700; }
+  .overlay-body { padding: 14px; overflow-y: auto; font-size: 0.82rem; }
+  
+  .kpi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+  .kpi-box { background: #f8fafc; border: 1px solid var(--border); border-radius: 8px; padding: 9px; }
+  .kpi-val { font-size: 1.15rem; font-weight: 700; color: var(--navy); }
+  .kpi-lbl { font-size: 0.7rem; color: var(--muted); margin-top: 2px; }
+
+  .mini-list { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 8px; }
+  .mini-list h4 { font-size: 0.75rem; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+  .member-row {
+    padding: 6px 8px;
+    border-radius: 6px;
+    background: #f9fafb;
+    border: 1px solid #eef2f6;
+    margin-bottom: 5px;
+    font-size: 0.76rem;
+  }
+  .member-row strong { color: var(--navy); }
+
+  /* Presentation / Stats View */
+  #stats-view {
+    display: none;
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px;
+    background: var(--bg);
+  }
+  .stats-container { max-width: 1150px; margin: 0 auto; }
+  .top-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+  .big-kpi { background: #fff; padding: 18px; border-radius: 12px; border: 1px solid var(--border); box-shadow: 0 2px 6px rgba(0,0,0,0.04); }
+  .big-kpi .num { font-size: 1.7rem; font-weight: 700; color: var(--navy); }
+  .big-kpi .title { font-size: 0.8rem; font-weight: 600; color: var(--muted); margin-top: 4px; }
+  .big-kpi .sub { font-size: 0.72rem; color: var(--green); margin-top: 6px; font-weight: 600; }
+
+  .panel-card { background: #fff; border-radius: 12px; border: 1px solid var(--border); padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 6px rgba(0,0,0,0.04); }
+  .panel-card h3 { font-size: 1rem; color: var(--navy); margin-bottom: 6px; }
+  .panel-card p.desc { font-size: 0.82rem; color: var(--muted); margin-bottom: 14px; }
+  
+  table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+  th { background: #f1f5f9; color: var(--navy); text-align: left; padding: 10px; font-weight: 700; border-bottom: 2px solid var(--border); }
+  td { padding: 9px 10px; border-bottom: 1px solid var(--border); }
+  tr:hover td { background: #f8fafc; }
+  .tag { padding: 3px 7px; border-radius: 5px; font-size: 0.72rem; font-weight: 600; }
+  .tag-green { background: #dcfce7; color: #166534; }
+  .tag-amber { background: #fef3c7; color: #92400e; }
+  .tag-blue { background: #dbeafe; color: #1e40af; }
+
+  .btn-export {
+    background: var(--navy);
+    color: #fff;
+    border: none;
+    padding: 8px 14px;
+    border-radius: 7px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn-export:hover { background: var(--navy-dark); }
+
+  /* Legend */
+  .map-legend {
+    position: absolute;
+    bottom: 20px;
+    left: 14px;
+    background: rgba(255,255,255,0.95);
+    padding: 10px 14px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    z-index: 800;
+    font-size: 0.75rem;
+  }
+  .legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .legend-item:last-child { margin-bottom: 0; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <i class="fa-solid fa-map-location-dot"></i>
+    <div>
+      <h1>Mapeamento Estratégico de Células — Maanaim</h1>
+      <span>22 Células • 406 Registros • Análise de Proximidade e Remanejamento</span>
+    </div>
+  </div>
+  <div class="header-tabs">
+    <button class="tab-btn active" id="btn-tab-map" onclick="switchTab('map')"><i class="fa-solid fa-map"></i> Mapa Interativo</button>
+    <button class="tab-btn" id="btn-tab-stats" onclick="switchTab('stats')"><i class="fa-solid fa-chart-pie"></i> Painel Estatístico (Apresentação)</button>
+  </div>
+</header>
+
+<div class="main-wrapper" id="map-view">
+  <aside>
+    <div class="sidebar-section">
+      <h2>Configuração de Raio & Camadas</h2>
+      <div class="control-group">
+        <label>
+          <span>Raio de Análise da Célula</span>
+          <span id="radius-label" style="color: var(--blue);">2.0 km</span>
+        </label>
+        <input type="range" id="radius-slider" min="0.5" max="10" step="0.5" value="2.0" oninput="updateRadius(this.value)">
+      </div>
+      <div class="filter-pills">
+        <div class="pill active" id="pill-own" onclick="toggleFilter('own')"><span class="dot" style="background:#2563eb;"></span> Da Célula</div>
+        <div class="pill active" id="pill-other-near" onclick="toggleFilter('otherNear')"><span class="dot" style="background:#f59e0b;"></span> Outra Célula (no raio)</div>
+        <div class="pill active" id="pill-no-cell" onclick="toggleFilter('noCell')"><span class="dot" style="background:#10b981;"></span> Sem Célula (no raio)</div>
+        <div class="pill" id="pill-all-others" onclick="toggleFilter('allOthers')"><span class="dot" style="background:#9ca3af;"></span> Demais Membros</div>
+      </div>
+    </div>
+
+    <div class="sidebar-section" style="padding-bottom: 8px; border-bottom: none;">
+      <h2>Selecione uma Célula (22)</h2>
+      <input type="text" class="search-input" id="search-celula" placeholder="Filtrar célula ou CEP..." oninput="renderCelulaList()">
+      <button onclick="selectAllOverview()" style="width:100%; padding:7px; border-radius:7px; border:1px solid var(--navy); background:#fff; color:var(--navy); font-weight:600; font-size:0.78rem; cursor:pointer; margin-bottom:4px;">
+        <i class="fa-solid fa-globe"></i> Visão Geral (Todas as Células)
+      </button>
+    </div>
+
+    <div class="celula-list" id="celula-list"></div>
+  </aside>
+
+  <div class="content-area">
+    <div id="map"></div>
+
+    <div class="map-legend">
+      <div class="legend-item"><i class="fa-solid fa-house-chimney" style="color:#1e365a;"></i> <strong>Local da Célula</strong> (Selecionada / Outras)</div>
+      <div class="legend-item"><span class="dot" style="background:#2563eb;"></span> Membros atuais da célula selecionada</div>
+      <div class="legend-item"><span class="dot" style="background:#f59e0b;"></span> Membros de outras células dentro do raio (Remanejamento)</div>
+      <div class="legend-item"><span class="dot" style="background:#10b981;"></span> Sem célula dentro do raio (Oportunidade de Integração)</div>
+      <div class="legend-item"><span class="dot" style="background:#9ca3af;"></span> Outros membros fora do filtro</div>
+    </div>
+
+    <div class="map-overlay-card" id="overlay-card">
+      <div class="overlay-header">
+        <h3 id="overlay-title">Visão Geral da Rede</h3>
+        <span id="overlay-badge" style="font-size:0.7rem; background:rgba(255,255,255,0.2); padding:2px 7px; border-radius:4px;">22 Células</span>
+      </div>
+      <div class="overlay-body" id="overlay-body"></div>
+    </div>
+  </div>
+</div>
+
+<!-- PAINEL ESTATÍSTICO PARA APRESENTAÇÃO -->
+<div id="stats-view">
+  <div class="stats-container">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+      <div>
+        <h2 style="color:var(--navy); font-size:1.3rem;">Estatísticas de Proximidade & Sugestão de Remanejamento</h2>
+        <p style="font-size:0.83rem; color:var(--muted);">Base consolidada: 406 registros (386 geocodificados e 20 sem CEP/coordenada na planilha original).</p>
+      </div>
+      <button class="btn-export" onclick="exportCSV()"><i class="fa-solid fa-file-csv"></i> Exportar Sugestões (CSV)</button>
+    </div>
+
+    <div class="top-kpis" id="top-kpis"></div>
+
+    <div class="panel-card">
+      <h3>1. Resumo por Célula — Membros Atuais vs. Potencial no Raio de <span id="stats-radius-txt">2.0</span> km</h3>
+      <p class="desc">Compare quantos membros cada célula possui hoje, a distância média deles e quantos vizinhos (de outras células ou sem célula) moram perto dela.</p>
+      <div style="overflow-x:auto;">
+        <table id="table-celulas">
+          <thead>
+            <tr>
+              <th>Célula</th>
+              <th>CEP / Localidade</th>
+              <th>Membros Atuais</th>
+              <th>Dist. Média Atual</th>
+              <th>Membros Longe (&gt;3 km)</th>
+              <th>Vizinhos de Outras Células (no raio)</th>
+              <th>Sem Célula (no raio)</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel-card">
+      <h3>2. Lista Prioritária de Sugestão de Remanejamento (Economia &ge; 0,5 km)</h3>
+      <p class="desc">Membros que atualmente frequentam uma célula mais distante e possuem outra célula cadastrada mais próxima de sua residência.</p>
+      <div style="overflow-x:auto; max-height:420px;">
+        <table id="table-remanejamento">
+          <thead>
+            <tr>
+              <th>Cód.</th>
+              <th>CEP / Rua</th>
+              <th>Célula Atual</th>
+              <th>Dist. Atual</th>
+              <th>Célula Mais Próxima</th>
+              <th>Nova Distância</th>
+              <th>Redução</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const CELULAS = [{"id": 1, "nome": "Adonai", "cep": "06413-010", "cep_raw": "06413010", "lat": -23.4913975, "lon": -46.8778867, "localidade": "Jardim Tupanci / Barueri", "is_sede_cep": false}, {"id": 2, "nome": "Ágape", "cep": "06455-020", "cep_raw": "06455020", "lat": -23.5024, "lon": -46.8568, "localidade": "Alphaville (Al. Tocantins) / Barueri", "is_sede_cep": true}, {"id": 3, "nome": "Atos", "cep": "06455-020", "cep_raw": "06455020", "lat": -23.5024, "lon": -46.8568, "localidade": "Alphaville (Al. Tocantins) / Barueri", "is_sede_cep": true}, {"id": 4, "nome": "Berit", "cep": "06455-020", "cep_raw": "06455020", "lat": -23.5024, "lon": -46.8568, "localidade": "Alphaville (Al. Tocantins) / Barueri", "is_sede_cep": true}, {"id": 5, "nome": "Betel", "cep": "06517-510", "cep_raw": "06517510", "lat": -23.4636, "lon": -46.9191, "localidade": "Sítio do Morro / Santana de Parnaíba", "is_sede_cep": false}, {"id": 6, "nome": "Conhecer a Deus", "cep": "06455-020", "cep_raw": "06455020", "lat": -23.5024, "lon": -46.8568, "localidade": "Alphaville (Al. Tocantins) / Barueri", "is_sede_cep": true}, {"id": 7, "nome": "Elohim", "cep": "06414-060", "cep_raw": "06414060", "lat": -23.4932, "lon": -46.8694, "localidade": "Jardim Tupanci / Barueri", "is_sede_cep": false}, {"id": 8, "nome": "Galileu", "cep": "06455-020", "cep_raw": "06455020", "lat": -23.5024, "lon": -46.8568, "localidade": "Alphaville (Al. Tocantins) / Barueri", "is_sede_cep": true}, {"id": 9, "nome": "Gileade", "cep": "06455-020", "cep_raw": "06455020", "lat": -23.5024, "lon": -46.8568, "localidade": "Alphaville (Al. Tocantins) / Barueri", "is_sede_cep": true}, {"id": 10, "nome": "Kairós", "cep": "06455-020", "cep_raw": "06455020", "lat": -23.5024, "lon": -46.8568, "localidade": "Alphaville (Al. Tocantins) / Barueri", "is_sede_cep": true}, {"id": 11, "nome": "Maná", "cep": "06455-020", "cep_raw": "06455020", "lat": -23.5024, "lon": -46.8568, "localidade": "Alphaville (Al. Tocantins) / Barueri", "is_sede_cep": true}, {"id": 12, "nome": "Maranata", "cep": "06455-020", "cep_raw": "06455020", "lat": -23.5024, "lon": -46.8568, "localidade": "Alphaville (Al. Tocantins) / Barueri", "is_sede_cep": true}, {"id": 13, "nome": "Miruna", "cep": "06455-020", "cep_raw": "06455020", "lat": -23.5024, "lon": -46.8568, "localidade": "Alphaville (Al. Tocantins) / Barueri", "is_sede_cep": true}, {"id": 14, "nome": "Monte Horebe", "cep": "06455-020", "cep_raw": "06455020", "lat": -23.5024, "lon": -46.8568, "localidade": "Alphaville (Al. Tocantins) / Barueri", "is_sede_cep": true}, {"id": 15, "nome": "Moriá", "cep": "06455-020", "cep_raw": "06455020", "lat": -23.5024, "lon": -46.8568, "localidade": "Alphaville (Al. Tocantins) / Barueri", "is_sede_cep": true}, {"id": 16, "nome": "Novo Nascimento", "cep": "06455-020", "cep_raw": "06455020", "lat": -23.5024, "lon": -46.8568, "localidade": "Alphaville (Al. Tocantins) / Barueri", "is_sede_cep": true}, {"id": 17, "nome": "Pura Benção", "cep": "06455-020", "cep_raw": "06455020", "lat": -23.5024, "lon": -46.8568, "localidade": "Alphaville (Al. Tocantins) / Barueri", "is_sede_cep": true}, {"id": 18, "nome": "Qadosh", "cep": "06455-020", "cep_raw": "06455020", "lat": -23.5024, "lon": -46.8568, "localidade": "Alphaville (Al. Tocantins) / Barueri", "is_sede_cep": true}, {"id": 19, "nome": "Shekinah", "cep": "06455-020", "cep_raw": "06455020", "lat": -23.5024, "lon": -46.8568, "localidade": "Alphaville (Al. Tocantins) / Barueri", "is_sede_cep": true}, {"id": 20, "nome": "Um dedo de Prosa", "cep": "06455-020", "cep_raw": "06455020", "lat": -23.5024, "lon": -46.8568, "localidade": "Alphaville (Al. Tocantins) / Barueri", "is_sede_cep": true}, {"id": 21, "nome": "Unidade", "cep": "06542-089", "cep_raw": "06542089", "lat": -23.4486537, "lon": -46.8910506, "localidade": "Alphaville / Santana de Parnaíba", "is_sede_cep": false}, {"id": 22, "nome": "Videira", "cep": "06455-020", "cep_raw": "06455020", "lat": -23.5024, "lon": -46.8568, "localidade": "Alphaville (Al. Tocantins) / Barueri", "is_sede_cep": true}];
+const MEMBROS = [{"codigo": 1, "id_membro": "1ebdba20", "cep": "02911-130", "rua": "Rua Oscar Carmilo", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.5475, "lon": -46.63611, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 23.05, "pode_remanejar": false}, {"codigo": 2, "id_membro": "8c2fccff", "cep": "04306-090", "rua": "Rua Abraão Miguel do Carmo", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.6275981, "lon": -46.6352361, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 26.53, "pode_remanejar": false}, {"codigo": 3, "id_membro": "232fb885", "cep": "04313-000", "rua": "Avenida Leonardo da Vinci", "celula": "Não informada", "sem_celula": true, "has_coord": true, "lat": -23.5475, "lon": -46.63611, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 23.05, "pode_remanejar": false}, {"codigo": 4, "id_membro": "e5c5d805", "cep": "04313-000", "rua": "Avenida Leonardo da Vinci", "celula": "Não informada", "sem_celula": true, "has_coord": true, "lat": -23.5475, "lon": -46.63611, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 23.05, "pode_remanejar": false}, {"codigo": 5, "id_membro": "1dd3dfa1", "cep": "04550-003", "rua": "Rua Alvorada", "celula": "Conhecer a Deus", "sem_celula": false, "has_coord": true, "lat": -23.5940375, "lon": -46.6842299, "dist_atual": 20.33, "cel_proxima": "Conhecer a Deus", "dist_proxima": 20.33, "pode_remanejar": false}, {"codigo": 6, "id_membro": "9dacd905", "cep": "04550-003", "rua": "Rua Alvorada", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.5940375, "lon": -46.6842299, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 20.33, "pode_remanejar": false}, {"codigo": 7, "id_membro": "dd90eb53", "cep": "04660-000", "rua": "Avenida Interlagos", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.6553634, "lon": -46.6849371, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 24.41, "pode_remanejar": false}, {"codigo": 8, "id_membro": "425c2fd2", "cep": "05174-300", "rua": "Rua Sebastião de Pina", "celula": "Maná", "sem_celula": false, "has_coord": true, "lat": -23.5475, "lon": -46.63611, "dist_atual": 23.05, "cel_proxima": "Maná", "dist_proxima": 23.05, "pode_remanejar": false}, {"codigo": 9, "id_membro": "aa6078e1", "cep": "05174-300", "rua": "Rua Sebastião de Pina", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.5475, "lon": -46.63611, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 23.05, "pode_remanejar": false}, {"codigo": 10, "id_membro": "b15b30f2", "cep": "05174-300", "rua": "Rua Sebastião de Pina", "celula": "Maná", "sem_celula": false, "has_coord": true, "lat": -23.5475, "lon": -46.63611, "dist_atual": 23.05, "cel_proxima": "Maná", "dist_proxima": 23.05, "pode_remanejar": false}, {"codigo": 11, "id_membro": "af7047e2", "cep": "05356-000", "rua": "Rua Conde Luiz Eduardo Matarazzo", "celula": "Moriá", "sem_celula": false, "has_coord": true, "lat": -23.4857517, "lon": -46.8845221, "dist_atual": 3.38, "cel_proxima": "Adonai", "dist_proxima": 0.92, "pode_remanejar": true}, {"codigo": 12, "id_membro": "470882ac", "cep": "05441-080", "rua": "Rua Djalma Coelho", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.5471111, "lon": -46.6921511, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 17.51, "pode_remanejar": false}, {"codigo": 13, "id_membro": "37caea1b", "cep": "05569-120", "rua": "Avenida do Vaticano", "celula": "Qadosh", "sem_celula": false, "has_coord": true, "lat": -23.6028459, "lon": -46.7927124, "dist_atual": 12.94, "cel_proxima": "Qadosh", "dist_proxima": 12.94, "pode_remanejar": false}, {"codigo": 14, "id_membro": "f9cd8253", "cep": "06030-304", "rua": "Alameda Sombreiro", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.5672117, "lon": -46.7764305, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 10.91, "pode_remanejar": false}, {"codigo": 15, "id_membro": "19bb4c13", "cep": "06030-316", "rua": "Alameda Flamboyant", "celula": "Novo Nascimento", "sem_celula": false, "has_coord": true, "lat": -23.5672117, "lon": -46.7764305, "dist_atual": 10.91, "cel_proxima": "Novo Nascimento", "dist_proxima": 10.91, "pode_remanejar": false}, {"codigo": 16, "id_membro": "d0fa49b2", "cep": "06030-316", "rua": "Alameda Flamboyant", "celula": "Novo Nascimento", "sem_celula": false, "has_coord": true, "lat": -23.5672117, "lon": -46.7764305, "dist_atual": 10.91, "cel_proxima": "Novo Nascimento", "dist_proxima": 10.91, "pode_remanejar": false}, {"codigo": 17, "id_membro": "b09fc92d", "cep": "06036-013", "rua": "Avenida Padre Vicente Melillo", "celula": "Betel", "sem_celula": false, "has_coord": true, "lat": -23.5609315, "lon": -46.7812938, "dist_atual": 17.74, "cel_proxima": "Ágape", "dist_proxima": 10.08, "pode_remanejar": true}, {"codigo": 18, "id_membro": "89ee4b07", "cep": "06060-230", "rua": "Rua Armando de Arruda Pereira", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.5325, "lon": -46.79167, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 7.44, "pode_remanejar": false}, {"codigo": 19, "id_membro": "9b130e1d", "cep": "06060-230", "rua": "Rua Armando de Arruda Pereira", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.5325, "lon": -46.79167, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 7.44, "pode_remanejar": false}, {"codigo": 20, "id_membro": "7fc35a55", "cep": "06112-050", "rua": "Rua Jacinto", "celula": "Moriá", "sem_celula": false, "has_coord": true, "lat": -23.5347639, "lon": -46.7905645, "dist_atual": 7.65, "cel_proxima": "Moriá", "dist_proxima": 7.65, "pode_remanejar": false}, {"codigo": 21, "id_membro": "dc946be4", "cep": "06112-050", "rua": "Rua Jacinto", "celula": "Moriá", "sem_celula": false, "has_coord": true, "lat": -23.5347639, "lon": -46.7905645, "dist_atual": 7.65, "cel_proxima": "Moriá", "dist_proxima": 7.65, "pode_remanejar": false}, {"codigo": 22, "id_membro": "d9b0cbf7", "cep": "06120-050", "rua": "Rua Cosmos", "celula": "Gileade", "sem_celula": false, "has_coord": true, "lat": -23.5347639, "lon": -46.7905645, "dist_atual": 7.65, "cel_proxima": "Gileade", "dist_proxima": 7.65, "pode_remanejar": false}, {"codigo": 23, "id_membro": "07709bb5", "cep": "06124-130", "rua": "Rua Cláudio Aparecido Oliveira", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.5325, "lon": -46.79167, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 7.44, "pode_remanejar": false}, {"codigo": 24, "id_membro": "2bfbf5b3", "cep": "06150-240", "rua": "Rua Jandira de Marins Peixoto", "celula": "Atos", "sem_celula": false, "has_coord": true, "lat": -23.5748119, "lon": -46.7986234, "dist_atual": 10.0, "cel_proxima": "Atos", "dist_proxima": 10.0, "pode_remanejar": false}, {"codigo": 25, "id_membro": "963a7cd2", "cep": "06150-240", "rua": "Rua Jandira de Marins Peixoto", "celula": "Atos", "sem_celula": false, "has_coord": true, "lat": -23.5748119, "lon": -46.7986234, "dist_atual": 10.0, "cel_proxima": "Atos", "dist_proxima": 10.0, "pode_remanejar": false}, {"codigo": 26, "id_membro": "e6cc33bb", "cep": "06150-240", "rua": "Rua Jandira de Marins Peixoto", "celula": "Atos", "sem_celula": false, "has_coord": true, "lat": -23.5748119, "lon": -46.7986234, "dist_atual": 10.0, "cel_proxima": "Atos", "dist_proxima": 10.0, "pode_remanejar": false}, {"codigo": 27, "id_membro": "9924a1dc", "cep": "06172-006", "rua": "Avenida José Barbosa de Siqueira", "celula": "Galileu", "sem_celula": false, "has_coord": true, "lat": -23.5483964, "lon": -46.8099276, "dist_atual": 7.0, "cel_proxima": "Galileu", "dist_proxima": 7.0, "pode_remanejar": false}, {"codigo": 28, "id_membro": "d6dc74a6", "cep": "06172-006", "rua": "Avenida José Barbosa de Siqueira", "celula": "Galileu", "sem_celula": false, "has_coord": true, "lat": -23.5483964, "lon": -46.8099276, "dist_atual": 7.0, "cel_proxima": "Galileu", "dist_proxima": 7.0, "pode_remanejar": false}, {"codigo": 29, "id_membro": "1e0edec4", "cep": "06172-290", "rua": "Rua Antônio Peres Paniágua", "celula": "Não informada", "sem_celula": true, "has_coord": true, "lat": -23.5441609, "lon": -46.8138483, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 6.38, "pode_remanejar": false}, {"codigo": 30, "id_membro": "31b78b76", "cep": "06172-290", "rua": "Rua Antônio Peres Paniágua", "celula": "Kairós", "sem_celula": false, "has_coord": true, "lat": -23.5441609, "lon": -46.8138483, "dist_atual": 6.38, "cel_proxima": "Kairós", "dist_proxima": 6.38, "pode_remanejar": false}, {"codigo": 31, "id_membro": "642b794f", "cep": "06172-290", "rua": "Rua Antônio Peres Paniágua", "celula": "Kairós", "sem_celula": false, "has_coord": true, "lat": -23.5441609, "lon": -46.8138483, "dist_atual": 6.38, "cel_proxima": "Kairós", "dist_proxima": 6.38, "pode_remanejar": false}, {"codigo": 32, "id_membro": "d8a06e28", "cep": "06172-290", "rua": "Rua Antônio Peres Paniágua", "celula": "Kairós", "sem_celula": false, "has_coord": true, "lat": -23.5441609, "lon": -46.8138483, "dist_atual": 6.38, "cel_proxima": "Kairós", "dist_proxima": 6.38, "pode_remanejar": false}, {"codigo": 33, "id_membro": "61a85bea", "cep": "06182-110", "rua": "Rua Jequié", "celula": "Monte Horebe", "sem_celula": false, "has_coord": true, "lat": -23.5227166, "lon": -46.8070741, "dist_atual": 5.55, "cel_proxima": "Monte Horebe", "dist_proxima": 5.55, "pode_remanejar": false}, {"codigo": 34, "id_membro": "c9fb4742", "cep": "06186-100", "rua": "Rua Antônio Peres Paniágua", "celula": "Monte Horebe", "sem_celula": false, "has_coord": true, "lat": -23.5441609, "lon": -46.8138483, "dist_atual": 6.38, "cel_proxima": "Monte Horebe", "dist_proxima": 6.38, "pode_remanejar": false}, {"codigo": 35, "id_membro": "f83d1228", "cep": "06186-100", "rua": "Rua Antônio Peres Paniágua", "celula": "Monte Horebe", "sem_celula": false, "has_coord": true, "lat": -23.5441609, "lon": -46.8138483, "dist_atual": 6.38, "cel_proxima": "Monte Horebe", "dist_proxima": 6.38, "pode_remanejar": false}, {"codigo": 36, "id_membro": "3870e3ba", "cep": "06226-002", "rua": "Avenida Cruzeiro do Sul", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.5325, "lon": -46.79167, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 7.44, "pode_remanejar": false}, {"codigo": 37, "id_membro": "577f29f5", "cep": "06226-002", "rua": "Avenida Cruzeiro do Sul", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.5325, "lon": -46.79167, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 7.44, "pode_remanejar": false}, {"codigo": 38, "id_membro": "4a3f739a", "cep": "06230-100", "rua": "Rua Amador Bueno", "celula": "Atos", "sem_celula": false, "has_coord": true, "lat": -23.5178731, "lon": -46.7945049, "dist_atual": 6.58, "cel_proxima": "Atos", "dist_proxima": 6.58, "pode_remanejar": false}, {"codigo": 39, "id_membro": "b5806119", "cep": "06230-100", "rua": "Rua Amador Bueno", "celula": "Atos", "sem_celula": false, "has_coord": true, "lat": -23.5178731, "lon": -46.7945049, "dist_atual": 6.58, "cel_proxima": "Atos", "dist_proxima": 6.58, "pode_remanejar": false}, {"codigo": 40, "id_membro": "3ff73164", "cep": "06230-150", "rua": "Avenida Edmundo Amaral", "celula": "Maranata", "sem_celula": false, "has_coord": true, "lat": -23.5178731, "lon": -46.7945049, "dist_atual": 6.58, "cel_proxima": "Maranata", "dist_proxima": 6.58, "pode_remanejar": false}, {"codigo": 41, "id_membro": "3ce64aaa", "cep": "06236-020", "rua": "Avenida João del Papa", "celula": "Novo Nascimento", "sem_celula": false, "has_coord": true, "lat": -23.5324859, "lon": -46.7916801, "dist_atual": 7.43, "cel_proxima": "Novo Nascimento", "dist_proxima": 7.43, "pode_remanejar": false}, {"codigo": 42, "id_membro": "778b422f", "cep": "06236-020", "rua": "Avenida João del Papa", "celula": "Novo Nascimento", "sem_celula": false, "has_coord": true, "lat": -23.5324859, "lon": -46.7916801, "dist_atual": 7.43, "cel_proxima": "Novo Nascimento", "dist_proxima": 7.43, "pode_remanejar": false}, {"codigo": 43, "id_membro": "01dfcab0", "cep": "06246-170", "rua": "Rua Valdomiro Cavazzani", "celula": "Pura Benção", "sem_celula": false, "has_coord": true, "lat": -23.5018492, "lon": -46.8064562, "dist_atual": 5.13, "cel_proxima": "Pura Benção", "dist_proxima": 5.13, "pode_remanejar": false}, {"codigo": 44, "id_membro": "26797cb0", "cep": "06250-050", "rua": "Avenida Paulo VI", "celula": "Pura Benção", "sem_celula": false, "has_coord": true, "lat": -23.4977709, "lon": -46.8040681, "dist_atual": 5.4, "cel_proxima": "Pura Benção", "dist_proxima": 5.4, "pode_remanejar": false}, {"codigo": 45, "id_membro": "b3644aae", "cep": "06250-050", "rua": "Avenida Paulo VI", "celula": "Pura Benção", "sem_celula": false, "has_coord": true, "lat": -23.4977709, "lon": -46.8040681, "dist_atual": 5.4, "cel_proxima": "Pura Benção", "dist_proxima": 5.4, "pode_remanejar": false}, {"codigo": 46, "id_membro": "13c77e93", "cep": "06253-110", "rua": "Rua Julieta Esteves Alexandrini", "celula": "Gileade", "sem_celula": false, "has_coord": true, "lat": -23.5010287, "lon": -46.7878126, "dist_atual": 7.04, "cel_proxima": "Gileade", "dist_proxima": 7.04, "pode_remanejar": false}, {"codigo": 47, "id_membro": "502ec4dc", "cep": "06260-150", "rua": "Rua Sebastião Gonçalves do Nascimento", "celula": "Adonai", "sem_celula": false, "has_coord": true, "lat": -23.5010287, "lon": -46.7878126, "dist_atual": 9.25, "cel_proxima": "Ágape", "dist_proxima": 7.04, "pode_remanejar": true}, {"codigo": 48, "id_membro": "e50a2806", "cep": "06260-150", "rua": "Rua Sebastião Gonçalves do Nascimento", "celula": "Adonai", "sem_celula": false, "has_coord": true, "lat": -23.5010287, "lon": -46.7878126, "dist_atual": 9.25, "cel_proxima": "Ágape", "dist_proxima": 7.04, "pode_remanejar": true}, {"codigo": 49, "id_membro": "7bfe2942", "cep": "06266-070", "rua": "Rua João Benedito da Silva", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.4971288, "lon": -46.7803513, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 7.82, "pode_remanejar": false}, {"codigo": 50, "id_membro": "f42e0b58", "cep": "06266-070", "rua": "Rua João Benedito da Silva", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.4971288, "lon": -46.7803513, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 7.82, "pode_remanejar": false}, {"codigo": 51, "id_membro": "4a4036d0", "cep": "06268-030", "rua": "Rua Termas de Monte Catini", "celula": "Elohim", "sem_celula": false, "has_coord": true, "lat": -23.5325, "lon": -46.79167, "dist_atual": 9.05, "cel_proxima": "Ágape", "dist_proxima": 7.44, "pode_remanejar": true}, {"codigo": 52, "id_membro": "4e1512b5", "cep": "06268-030", "rua": "Rua Termas de Monte Catini", "celula": "Elohim", "sem_celula": false, "has_coord": true, "lat": -23.5325, "lon": -46.79167, "dist_atual": 9.05, "cel_proxima": "Ágape", "dist_proxima": 7.44, "pode_remanejar": true}, {"codigo": 53, "id_membro": "b9b96b15", "cep": "06311-001", "rua": "Avenida Rui Barbosa", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.52272, "lon": -46.835, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 3.17, "pode_remanejar": false}, {"codigo": 54, "id_membro": "64119cea", "cep": "06315-270", "rua": "Avenida Antônio Roberto", "celula": "Videira", "sem_celula": false, "has_coord": true, "lat": -23.522661, "lon": -46.8406648, "dist_atual": 2.79, "cel_proxima": "Videira", "dist_proxima": 2.79, "pode_remanejar": false}, {"codigo": 55, "id_membro": "aae6eeb1", "cep": "06315-270", "rua": "Avenida Antônio Roberto", "celula": "Videira", "sem_celula": false, "has_coord": true, "lat": -23.522661, "lon": -46.8406648, "dist_atual": 2.79, "cel_proxima": "Videira", "dist_proxima": 2.79, "pode_remanejar": false}, {"codigo": 56, "id_membro": "504c99fb", "cep": "06320-270", "rua": "Rua das Palmeiras", "celula": "Elohim", "sem_celula": false, "has_coord": true, "lat": -23.52272, "lon": -46.835, "dist_atual": 4.8, "cel_proxima": "Ágape", "dist_proxima": 3.17, "pode_remanejar": true}, {"codigo": 57, "id_membro": "ddc88652", "cep": "06320-270", "rua": "Rua das Palmeiras", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.52272, "lon": -46.835, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 3.17, "pode_remanejar": false}, {"codigo": 58, "id_membro": "647917ac", "cep": "06321-670", "rua": "Rua Silva Ribeiro", "celula": "Não informada", "sem_celula": true, "has_coord": true, "lat": -23.52272, "lon": -46.835, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 3.17, "pode_remanejar": false}, {"codigo": 59, "id_membro": "2b80fd43", "cep": "06322-010", "rua": "Avenida Eugênia", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.5264727, "lon": -46.8356734, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 3.44, "pode_remanejar": false}, {"codigo": 60, "id_membro": "9449ffbf", "cep": "06322-280", "rua": "Rua Nicolina Nogueira Silva", "celula": "Atos", "sem_celula": false, "has_coord": true, "lat": -23.5427302, "lon": -46.8240848, "dist_atual": 5.59, "cel_proxima": "Atos", "dist_proxima": 5.59, "pode_remanejar": false}, {"codigo": 61, "id_membro": "05af4f8b", "cep": "06325-100", "rua": "Rua Manaus", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.5335592, "lon": -46.821026, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 5.03, "pode_remanejar": false}, {"codigo": 62, "id_membro": "f96aff3e", "cep": "06326-000", "rua": "Rua Osasco", "celula": "Berit", "sem_celula": false, "has_coord": true, "lat": -23.5335592, "lon": -46.821026, "dist_atual": 5.03, "cel_proxima": "Berit", "dist_proxima": 5.03, "pode_remanejar": false}, {"codigo": 63, "id_membro": "ed0f6d92", "cep": "06328-020", "rua": "Avenida Pilar do Sul", "celula": "Monte Horebe", "sem_celula": false, "has_coord": true, "lat": -23.5335592, "lon": -46.821026, "dist_atual": 5.03, "cel_proxima": "Monte Horebe", "dist_proxima": 5.03, "pode_remanejar": false}, {"codigo": 64, "id_membro": "3c8aea2c", "cep": "06329-230", "rua": "Rua Bocaiúva", "celula": "Videira", "sem_celula": false, "has_coord": true, "lat": -23.5335592, "lon": -46.821026, "dist_atual": 5.03, "cel_proxima": "Videira", "dist_proxima": 5.03, "pode_remanejar": false}, {"codigo": 65, "id_membro": "85e96dbd", "cep": "06329-230", "rua": "Rua Bocaiúva", "celula": "Videira", "sem_celula": false, "has_coord": true, "lat": -23.5335592, "lon": -46.821026, "dist_atual": 5.03, "cel_proxima": "Videira", "dist_proxima": 5.03, "pode_remanejar": false}, {"codigo": 66, "id_membro": "62b3f940", "cep": "06330-000", "rua": "Estrada do Copiúva", "celula": "Monte Horebe", "sem_celula": false, "has_coord": true, "lat": -23.52272, "lon": -46.835, "dist_atual": 3.17, "cel_proxima": "Monte Horebe", "dist_proxima": 3.17, "pode_remanejar": false}, {"codigo": 67, "id_membro": "77a4b795", "cep": "06330-000", "rua": "Estrada do Copiúva", "celula": "Monte Horebe", "sem_celula": false, "has_coord": true, "lat": -23.52272, "lon": -46.835, "dist_atual": 3.17, "cel_proxima": "Monte Horebe", "dist_proxima": 3.17, "pode_remanejar": false}, {"codigo": 68, "id_membro": "6035ce72", "cep": "06332-000", "rua": "Rua Porongaba", "celula": "Atos", "sem_celula": false, "has_coord": true, "lat": -23.5462444, "lon": -46.8295625, "dist_atual": 5.61, "cel_proxima": "Atos", "dist_proxima": 5.61, "pode_remanejar": false}, {"codigo": 69, "id_membro": "92debe34", "cep": "06334-000", "rua": "Estrada da Gabiroba", "celula": "Monte Horebe", "sem_celula": false, "has_coord": true, "lat": -23.5447126, "lon": -46.8348915, "dist_atual": 5.21, "cel_proxima": "Monte Horebe", "dist_proxima": 5.21, "pode_remanejar": false}, {"codigo": 70, "id_membro": "8613a2bf", "cep": "06335-100", "rua": "Rua Bauru", "celula": "Gileade", "sem_celula": false, "has_coord": true, "lat": -23.5524802, "lon": -46.8332251, "dist_atual": 6.07, "cel_proxima": "Gileade", "dist_proxima": 6.07, "pode_remanejar": false}, {"codigo": 71, "id_membro": "6944ec71", "cep": "06341-430", "rua": "Passagem Abaré", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.52272, "lon": -46.835, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 3.17, "pode_remanejar": false}, {"codigo": 72, "id_membro": "76ed0482", "cep": "06341-650", "rua": "Avenida Plutão", "celula": "Não informada", "sem_celula": true, "has_coord": true, "lat": -23.5738535, "lon": -46.8158961, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 8.97, "pode_remanejar": false}, {"codigo": 73, "id_membro": "f7b91f15", "cep": "06343-000", "rua": "Estrada João Fasoli", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.5721388, "lon": -46.8342713, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 8.09, "pode_remanejar": false}, {"codigo": 74, "id_membro": "314557ca", "cep": "06343-040", "rua": "Estrada Aldeinha", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.5721388, "lon": -46.8342713, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 8.09, "pode_remanejar": false}, {"codigo": 75, "id_membro": "60148f0e", "cep": "06351-040", "rua": "Estrada Fazendinha", "celula": "Ágape", "sem_celula": false, "has_coord": true, "lat": -23.52272, "lon": -46.835, "dist_atual": 3.17, "cel_proxima": "Ágape", "dist_proxima": 3.17, "pode_remanejar": false}, {"codigo": 76, "id_membro": "94ed00b5", "cep": "06351-040", "rua": "Estrada Fazendinha", "celula": "Ágape", "sem_celula": false, "has_coord": true, "lat": -23.52272, "lon": -46.835, "dist_atual": 3.17, "cel_proxima": "Ágape", "dist_proxima": 3.17, "pode_remanejar": false}, {"codigo": 77, "id_membro": "2cd8b377", "cep": "06361-400", "rua": "Estrada do Jacarandá", "celula": "Ágape", "sem_celula": false, "has_coord": true, "lat": -23.5614308, "lon": -46.847616, "dist_atual": 6.63, "cel_proxima": "Ágape", "dist_proxima": 6.63, "pode_remanejar": false}, {"codigo": 78, "id_membro": "dcf198c6", "cep": "06361-400", "rua": "Estrada do Jacarandá", "celula": "Ágape", "sem_celula": false, "has_coord": true, "lat": -23.5614308, "lon": -46.847616, "dist_atual": 6.63, "cel_proxima": "Ágape", "dist_proxima": 6.63, "pode_remanejar": false}, {"codigo": 79, "id_membro": "36ed4520", "cep": "06362-110", "rua": "Rua Serra dos Cristais", "celula": "Videira", "sem_celula": false, "has_coord": true, "lat": -23.5548781, "lon": -46.8439281, "dist_atual": 5.98, "cel_proxima": "Videira", "dist_proxima": 5.98, "pode_remanejar": false}, {"codigo": 80, "id_membro": "fa3d5e00", "cep": "06362-110", "rua": "Rua Serra dos Cristais", "celula": "Videira", "sem_celula": false, "has_coord": true, "lat": -23.5548781, "lon": -46.8439281, "dist_atual": 5.98, "cel_proxima": "Videira", "dist_proxima": 5.98, "pode_remanejar": false}, {"codigo": 81, "id_membro": "0ea8ea46", "cep": "06380-110", "rua": "Rua São Paulo", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.5405292, "lon": -46.8367519, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 4.71, "pode_remanejar": false}, {"codigo": 82, "id_membro": "d5cddabd", "cep": "06380-110", "rua": "Rua São Paulo", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.5405292, "lon": -46.8367519, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 4.71, "pode_remanejar": false}, {"codigo": 83, "id_membro": "de6e9b8a", "cep": "06380-110", "rua": "Rua São Paulo", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.5405292, "lon": -46.8367519, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 4.71, "pode_remanejar": false}, {"codigo": 84, "id_membro": "4e6f5126", "cep": "06381-050", "rua": "Rua Santa Marta", "celula": "Monte Horebe", "sem_celula": false, "has_coord": true, "lat": -23.5267899, "lon": -46.8460022, "dist_atual": 2.93, "cel_proxima": "Monte Horebe", "dist_proxima": 2.93, "pode_remanejar": false}, {"codigo": 85, "id_membro": "8de0e8fe", "cep": "06381-050", "rua": "Rua Santa Marta", "celula": "Monte Horebe", "sem_celula": false, "has_coord": true, "lat": -23.5267899, "lon": -46.8460022, "dist_atual": 2.93, "cel_proxima": "Monte Horebe", "dist_proxima": 2.93, "pode_remanejar": false}, {"codigo": 86, "id_membro": "c6822db7", "cep": "06381-050", "rua": "Rua Santa Marta", "celula": "Monte Horebe", "sem_celula": false, "has_coord": true, "lat": -23.5267899, "lon": -46.8460022, "dist_atual": 2.93, "cel_proxima": "Monte Horebe", "dist_proxima": 2.93, "pode_remanejar": false}, {"codigo": 87, "id_membro": "53001b7b", "cep": "06382-270", "rua": "Rua da Felicidade", "celula": "Elohim", "sem_celula": false, "has_coord": true, "lat": -23.5267899, "lon": -46.8460022, "dist_atual": 4.43, "cel_proxima": "Ágape", "dist_proxima": 2.93, "pode_remanejar": true}, {"codigo": 88, "id_membro": "2c1e5147", "cep": "06385-340", "rua": "Rua Olga", "celula": "Maranata", "sem_celula": false, "has_coord": true, "lat": -23.535323, "lon": -46.838363, "dist_atual": 4.12, "cel_proxima": "Maranata", "dist_proxima": 4.12, "pode_remanejar": false}, {"codigo": 89, "id_membro": "9aa388c2", "cep": "06385-420", "rua": "Avenida Antônia Cônsulo Duarte Costa", "celula": "Galileu", "sem_celula": false, "has_coord": true, "lat": -23.52272, "lon": -46.835, "dist_atual": 3.17, "cel_proxima": "Galileu", "dist_proxima": 3.17, "pode_remanejar": false}, {"codigo": 90, "id_membro": "233fcc62", "cep": "06386-130", "rua": "Rua São Pedro", "celula": "Moriá", "sem_celula": false, "has_coord": true, "lat": -23.5683963, "lon": -46.8608116, "dist_atual": 7.35, "cel_proxima": "Moriá", "dist_proxima": 7.35, "pode_remanejar": false}, {"codigo": 91, "id_membro": "d1a96c89", "cep": "06386-130", "rua": "Rua São Pedro", "celula": "Videira", "sem_celula": false, "has_coord": true, "lat": -23.5683963, "lon": -46.8608116, "dist_atual": 7.35, "cel_proxima": "Videira", "dist_proxima": 7.35, "pode_remanejar": false}, {"codigo": 92, "id_membro": "95508b2a", "cep": "06386-630", "rua": "Rua Monte Alegre", "celula": "Elohim", "sem_celula": false, "has_coord": true, "lat": -23.5683963, "lon": -46.8608116, "dist_atual": 8.41, "cel_proxima": "Ágape", "dist_proxima": 7.35, "pode_remanejar": true}, {"codigo": 93, "id_membro": "314d5688", "cep": "06390-290", "rua": "Avenida Dois Córregos", "celula": "Berit", "sem_celula": false, "has_coord": true, "lat": -23.5376319, "lon": -46.849706, "dist_atual": 3.98, "cel_proxima": "Berit", "dist_proxima": 3.98, "pode_remanejar": false}, {"codigo": 94, "id_membro": "88118eaf", "cep": "06390-290", "rua": "Avenida Dois Córregos", "celula": "Berit", "sem_celula": false, "has_coord": true, "lat": -23.5376319, "lon": -46.849706, "dist_atual": 3.98, "cel_proxima": "Berit", "dist_proxima": 3.98, "pode_remanejar": false}, {"codigo": 95, "id_membro": "bb130537", "cep": "06390-290", "rua": "Avenida Dois Córregos", "celula": "Berit", "sem_celula": false, "has_coord": true, "lat": -23.5376319, "lon": -46.849706, "dist_atual": 3.98, "cel_proxima": "Berit", "dist_proxima": 3.98, "pode_remanejar": false}, {"codigo": 96, "id_membro": "890c1dac", "cep": "06390-500", "rua": "Rua Sabino", "celula": "Atos", "sem_celula": false, "has_coord": true, "lat": -23.5376319, "lon": -46.849706, "dist_atual": 3.98, "cel_proxima": "Atos", "dist_proxima": 3.98, "pode_remanejar": false}, {"codigo": 97, "id_membro": "fbdb0397", "cep": "06394-048", "rua": "Rua Maria Eliza Azanha", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.52272, "lon": -46.835, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 3.17, "pode_remanejar": false}, {"codigo": 98, "id_membro": "0bb0212e", "cep": "06395-000", "rua": "Rua Bárbara Hipolitto Capriotti", "celula": "Atos", "sem_celula": false, "has_coord": true, "lat": -23.5376319, "lon": -46.849706, "dist_atual": 3.98, "cel_proxima": "Atos", "dist_proxima": 3.98, "pode_remanejar": false}, {"codigo": 99, "id_membro": "55d468df", "cep": "06395-000", "rua": "Rua Bárbara Hipolitto Capriotti", "celula": "Atos", "sem_celula": false, "has_coord": true, "lat": -23.5376319, "lon": -46.849706, "dist_atual": 3.98, "cel_proxima": "Atos", "dist_proxima": 3.98, "pode_remanejar": false}, {"codigo": 100, "id_membro": "1b919b47", "cep": "06396-110", "rua": "Rua Antônia Gozzi Valverde", "celula": "Galileu", "sem_celula": false, "has_coord": true, "lat": -23.5376319, "lon": -46.849706, "dist_atual": 3.98, "cel_proxima": "Galileu", "dist_proxima": 3.98, "pode_remanejar": false}, {"codigo": 101, "id_membro": "29006fd2", "cep": "06396-110", "rua": "Rua Antônia Gozzi Valverde", "celula": "Galileu", "sem_celula": false, "has_coord": true, "lat": -23.5376319, "lon": -46.849706, "dist_atual": 3.98, "cel_proxima": "Galileu", "dist_proxima": 3.98, "pode_remanejar": false}, {"codigo": 102, "id_membro": "455c346c", "cep": "06396-110", "rua": "Rua Antônia Gozzi Valverde", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.5376319, "lon": -46.849706, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 3.98, "pode_remanejar": false}, {"codigo": 103, "id_membro": "5113fd45", "cep": "06396-110", "rua": "Rua Antônia Gozzi Valverde", "celula": "Monte Horebe", "sem_celula": false, "has_coord": true, "lat": -23.5376319, "lon": -46.849706, "dist_atual": 3.98, "cel_proxima": "Monte Horebe", "dist_proxima": 3.98, "pode_remanejar": false}, {"codigo": 104, "id_membro": "be2942d4", "cep": "06396-110", "rua": "Rua Antônia Gozzi Valverde", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.5376319, "lon": -46.849706, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 3.98, "pode_remanejar": false}, {"codigo": 105, "id_membro": "1e2fcfc1", "cep": "06396-120", "rua": "Rua Colômbia", "celula": "Berit", "sem_celula": false, "has_coord": true, "lat": -23.52272, "lon": -46.835, "dist_atual": 3.17, "cel_proxima": "Berit", "dist_proxima": 3.17, "pode_remanejar": false}, {"codigo": 106, "id_membro": "7cce444b", "cep": "06396-130", "rua": "Rua Lins de Vasconcelos", "celula": "Galileu", "sem_celula": false, "has_coord": true, "lat": -23.5376319, "lon": -46.849706, "dist_atual": 3.98, "cel_proxima": "Galileu", "dist_proxima": 3.98, "pode_remanejar": false}, {"codigo": 107, "id_membro": "9f77e19b", "cep": "06396-130", "rua": "Rua Lins de Vasconcelos", "celula": "Galileu", "sem_celula": false, "has_coord": true, "lat": -23.5376319, "lon": -46.849706, "dist_atual": 3.98, "cel_proxima": "Galileu", "dist_proxima": 3.98, "pode_remanejar": false}, {"codigo": 108, "id_membro": "350a976b", "cep": "06397-510", "rua": "Rua José Ferreira Costa", "celula": "Gileade", "sem_celula": false, "has_coord": true, "lat": -23.52272, "lon": -46.835, "dist_atual": 3.17, "cel_proxima": "Gileade", "dist_proxima": 3.17, "pode_remanejar": false}, {"codigo": 109, "id_membro": "43435d2b", "cep": "06397-510", "rua": "Rua José Ferreira Costa", "celula": "Gileade", "sem_celula": false, "has_coord": true, "lat": -23.52272, "lon": -46.835, "dist_atual": 3.17, "cel_proxima": "Gileade", "dist_proxima": 3.17, "pode_remanejar": false}, {"codigo": 110, "id_membro": "e221b616", "cep": "06397-660", "rua": "Rua Rubensval Dias da Costa", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.5343671, "lon": -46.8614227, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 3.59, "pode_remanejar": false}, {"codigo": 111, "id_membro": "79c0fac6", "cep": "06401-010", "rua": "Rua Duque de Caxias", "celula": "Maranata", "sem_celula": false, "has_coord": true, "lat": -23.5114599, "lon": -46.8745754, "dist_atual": 2.07, "cel_proxima": "Maranata", "dist_proxima": 2.07, "pode_remanejar": false}, {"codigo": 112, "id_membro": "7b70ea68", "cep": "06401-010", "rua": "Rua Duque de Caxias", "celula": "Maranata", "sem_celula": false, "has_coord": true, "lat": -23.5114599, "lon": -46.8745754, "dist_atual": 2.07, "cel_proxima": "Maranata", "dist_proxima": 2.07, "pode_remanejar": false}, {"codigo": 113, "id_membro": "1efdc39e", "cep": "06401-147", "rua": "Rua Adelino Cardana", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.5114599, "lon": -46.8745754, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 2.07, "pode_remanejar": false}, {"codigo": 114, "id_membro": "3d489c76", "cep": "06401-147", "rua": "Rua Adelino Cardana", "celula": "Maná", "sem_celula": false, "has_coord": true, "lat": -23.5114599, "lon": -46.8745754, "dist_atual": 2.07, "cel_proxima": "Maná", "dist_proxima": 2.07, "pode_remanejar": false}, {"codigo": 115, "id_membro": "b5cc9e59", "cep": "06401-147", "rua": "Rua Adelino Cardana", "celula": "Maná", "sem_celula": false, "has_coord": true, "lat": -23.5114599, "lon": -46.8745754, "dist_atual": 2.07, "cel_proxima": "Maná", "dist_proxima": 2.07, "pode_remanejar": false}, {"codigo": 116, "id_membro": "3a6749a1", "cep": "06401-160", "rua": "Avenida Henriqueta Mendes Guerra", "celula": "Elohim", "sem_celula": false, "has_coord": true, "lat": -23.5104055, "lon": -46.8771413, "dist_atual": 2.07, "cel_proxima": "Elohim", "dist_proxima": 2.07, "pode_remanejar": false}, {"codigo": 117, "id_membro": "6267bcd2", "cep": "06401-160", "rua": "Avenida Henriqueta Mendes Guerra", "celula": "Berit", "sem_celula": false, "has_coord": true, "lat": -23.5104055, "lon": -46.8771413, "dist_atual": 2.26, "cel_proxima": "Elohim", "dist_proxima": 2.07, "pode_remanejar": false}, {"codigo": 118, "id_membro": "c44fec6a", "cep": "06401-160", "rua": "Avenida Henriqueta Mendes Guerra", "celula": "Berit", "sem_celula": false, "has_coord": true, "lat": -23.5104055, "lon": -46.8771413, "dist_atual": 2.26, "cel_proxima": "Elohim", "dist_proxima": 2.07, "pode_remanejar": false}, {"codigo": 119, "id_membro": "4efe8283", "cep": "06402-060", "rua": "Rua São José Operário", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.51056, "lon": -46.87611, "dist_atual": null, "cel_proxima": "Elohim", "dist_proxima": 2.05, "pode_remanejar": false}, {"codigo": 120, "id_membro": "6cce1184", "cep": "06402-230", "rua": "Rua Caim", "celula": "Pura Benção", "sem_celula": false, "has_coord": true, "lat": -23.5094353, "lon": -46.8812396, "dist_atual": 2.61, "cel_proxima": "Adonai", "dist_proxima": 2.03, "pode_remanejar": true}, {"codigo": 121, "id_membro": "557bd321", "cep": "06404-100", "rua": "Rua Adonai de Almeida Sylos", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.5066707, "lon": -46.8729764, "dist_atual": null, "cel_proxima": "Elohim", "dist_proxima": 1.54, "pode_remanejar": false}, {"codigo": 122, "id_membro": "b172849a", "cep": "06404-100", "rua": "Rua Adonai de Almeida Sylos", "celula": "Não informada", "sem_celula": true, "has_coord": true, "lat": -23.5066707, "lon": -46.8729764, "dist_atual": null, "cel_proxima": "Elohim", "dist_proxima": 1.54, "pode_remanejar": false}, {"codigo": 123, "id_membro": "0b33e696", "cep": "06404-326", "rua": "Avenida Trindade", "celula": "Betel", "sem_celula": false, "has_coord": true, "lat": -23.5058293, "lon": -46.8682853, "dist_atual": 6.99, "cel_proxima": "Ágape", "dist_proxima": 1.23, "pode_remanejar": true}, {"codigo": 124, "id_membro": "1a8112d5", "cep": "06404-326", "rua": "Avenida Trindade", "celula": "Kairós", "sem_celula": false, "has_coord": true, "lat": -23.5058293, "lon": -46.8682853, "dist_atual": 1.23, "cel_proxima": "Kairós", "dist_proxima": 1.23, "pode_remanejar": false}, {"codigo": 125, "id_membro": "5c415f49", "cep": "06404-326", "rua": "Avenida Trindade", "celula": "Betel", "sem_celula": false, "has_coord": true, "lat": -23.5058293, "lon": -46.8682853, "dist_atual": 6.99, "cel_proxima": "Ágape", "dist_proxima": 1.23, "pode_remanejar": true}, {"codigo": 126, "id_membro": "9d74cc66", "cep": "06404-326", "rua": "Avenida Trindade", "celula": "Betel", "sem_celula": false, "has_coord": true, "lat": -23.5058293, "lon": -46.8682853, "dist_atual": 6.99, "cel_proxima": "Ágape", "dist_proxima": 1.23, "pode_remanejar": true}, {"codigo": 127, "id_membro": "32db0f46", "cep": "06405-070", "rua": "Rua Mar das Filipinas", "celula": "Adonai", "sem_celula": false, "has_coord": true, "lat": -23.5011039, "lon": -46.8976114, "dist_atual": 2.28, "cel_proxima": "Adonai", "dist_proxima": 2.28, "pode_remanejar": false}, {"codigo": 128, "id_membro": "ef9f7099", "cep": "06405-070", "rua": "Rua Mar das Filipinas", "celula": "Adonai", "sem_celula": false, "has_coord": true, "lat": -23.5011039, "lon": -46.8976114, "dist_atual": 2.28, "cel_proxima": "Adonai", "dist_proxima": 2.28, "pode_remanejar": false}, {"codigo": 129, "id_membro": "0fee9d1f", "cep": "06409-140", "rua": "Rua Saracura", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.4945798, "lon": -46.895826, "dist_atual": null, "cel_proxima": "Adonai", "dist_proxima": 1.86, "pode_remanejar": false}, {"codigo": 130, "id_membro": "cfc782d5", "cep": "06410-020", "rua": "Rua Turmalina", "celula": "Ágape", "sem_celula": false, "has_coord": true, "lat": -23.5024257, "lon": -46.8668341, "dist_atual": 1.02, "cel_proxima": "Ágape", "dist_proxima": 1.02, "pode_remanejar": false}, {"codigo": 131, "id_membro": "e9baa9cc", "cep": "06410-020", "rua": "Rua Turmalina", "celula": "Ágape", "sem_celula": false, "has_coord": true, "lat": -23.5024257, "lon": -46.8668341, "dist_atual": 1.02, "cel_proxima": "Ágape", "dist_proxima": 1.02, "pode_remanejar": false}, {"codigo": 132, "id_membro": "f3b33e22", "cep": "06410-040", "rua": "Rua Yen", "celula": "Pura Benção", "sem_celula": false, "has_coord": true, "lat": -23.5024257, "lon": -46.8668341, "dist_atual": 1.02, "cel_proxima": "Pura Benção", "dist_proxima": 1.02, "pode_remanejar": false}, {"codigo": 133, "id_membro": "6fa2c682", "cep": "06410-250", "rua": "Rua Ipiranga", "celula": "Maranata", "sem_celula": false, "has_coord": true, "lat": -23.5011325, "lon": -46.8689802, "dist_atual": 1.25, "cel_proxima": "Elohim", "dist_proxima": 0.88, "pode_remanejar": false}, {"codigo": 134, "id_membro": "e32559af", "cep": "06410-250", "rua": "Rua Ipiranga", "celula": "Maranata", "sem_celula": false, "has_coord": true, "lat": -23.5011325, "lon": -46.8689802, "dist_atual": 1.25, "cel_proxima": "Elohim", "dist_proxima": 0.88, "pode_remanejar": false}, {"codigo": 135, "id_membro": "79b656d8", "cep": "06411-170", "rua": "Rua Mato Grosso", "celula": "Não informada", "sem_celula": true, "has_coord": true, "lat": -23.5018133, "lon": -46.8740869, "dist_atual": null, "cel_proxima": "Elohim", "dist_proxima": 1.07, "pode_remanejar": false}, {"codigo": 136, "id_membro": "309997d6", "cep": "06411-210", "rua": "Rua Carlos de Campos", "celula": "Miruna", "sem_celula": false, "has_coord": true, "lat": -23.5018133, "lon": -46.8740869, "dist_atual": 1.76, "cel_proxima": "Elohim", "dist_proxima": 1.07, "pode_remanejar": true}, {"codigo": 137, "id_membro": "63623dea", "cep": "06411-210", "rua": "Rua Carlos de Campos", "celula": "Maranata", "sem_celula": false, "has_coord": true, "lat": -23.5018133, "lon": -46.8740869, "dist_atual": 1.76, "cel_proxima": "Elohim", "dist_proxima": 1.07, "pode_remanejar": true}, {"codigo": 138, "id_membro": "8fddc04a", "cep": "06411-210", "rua": "Rua Carlos de Campos", "celula": "Pura Benção", "sem_celula": false, "has_coord": true, "lat": -23.5018133, "lon": -46.8740869, "dist_atual": 1.76, "cel_proxima": "Elohim", "dist_proxima": 1.07, "pode_remanejar": true}, {"codigo": 139, "id_membro": "ed8aa5f9", "cep": "06411-210", "rua": "Rua Carlos de Campos", "celula": "Videira", "sem_celula": false, "has_coord": true, "lat": -23.5018133, "lon": -46.8740869, "dist_atual": 1.76, "cel_proxima": "Elohim", "dist_proxima": 1.07, "pode_remanejar": true}, {"codigo": 140, "id_membro": "5413eb25", "cep": "06411-280", "rua": "Rua Augusta", "celula": "Pura Benção", "sem_celula": false, "has_coord": true, "lat": -23.4995385, "lon": -46.8711357, "dist_atual": 1.5, "cel_proxima": "Elohim", "dist_proxima": 0.73, "pode_remanejar": true}, {"codigo": 141, "id_membro": "fcbc79fe", "cep": "06411-300", "rua": "Avenida São Paulo das Missões", "celula": "Pura Benção", "sem_celula": false, "has_coord": true, "lat": -23.4990898, "lon": -46.8752212, "dist_atual": 1.91, "cel_proxima": "Elohim", "dist_proxima": 0.88, "pode_remanejar": true}, {"codigo": 142, "id_membro": "1a7ff723", "cep": "06412-140", "rua": "Rua Mar Vermelho", "celula": "Maná", "sem_celula": false, "has_coord": true, "lat": -23.4977653, "lon": -46.8817651, "dist_atual": 2.6, "cel_proxima": "Adonai", "dist_proxima": 0.81, "pode_remanejar": true}, {"codigo": 143, "id_membro": "a9096b71", "cep": "06412-140", "rua": "Rua Mar Vermelho", "celula": "Pura Benção", "sem_celula": false, "has_coord": true, "lat": -23.4977653, "lon": -46.8817651, "dist_atual": 2.6, "cel_proxima": "Adonai", "dist_proxima": 0.81, "pode_remanejar": true}, {"codigo": 144, "id_membro": "60e5cf29", "cep": "06412-170", "rua": "Rua Canal de Suez", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.4977653, "lon": -46.8817651, "dist_atual": null, "cel_proxima": "Adonai", "dist_proxima": 0.81, "pode_remanejar": false}, {"codigo": 145, "id_membro": "cb329bc4", "cep": "06412-200", "rua": "Rua do Golfinho", "celula": "Maná", "sem_celula": false, "has_coord": true, "lat": -23.4949068, "lon": -46.8794987, "dist_atual": 2.46, "cel_proxima": "Adonai", "dist_proxima": 0.42, "pode_remanejar": true}, {"codigo": 146, "id_membro": "65d30847", "cep": "06413-010", "rua": "Rua Dempachi Nakayama", "celula": "Adonai", "sem_celula": false, "has_coord": true, "lat": -23.4913975, "lon": -46.8778867, "dist_atual": 0.0, "cel_proxima": "Adonai", "dist_proxima": 0.0, "pode_remanejar": false}, {"codigo": 147, "id_membro": "80396f3c", "cep": "06413-010", "rua": "Rua Dempachi Nakayama", "celula": "Kairós", "sem_celula": false, "has_coord": true, "lat": -23.4913975, "lon": -46.8778867, "dist_atual": 2.47, "cel_proxima": "Adonai", "dist_proxima": 0.0, "pode_remanejar": true}, {"codigo": 148, "id_membro": "92062270", "cep": "06413-010", "rua": "Rua Dempachi Nakayama", "celula": "Adonai", "sem_celula": false, "has_coord": true, "lat": -23.4913975, "lon": -46.8778867, "dist_atual": 0.0, "cel_proxima": "Adonai", "dist_proxima": 0.0, "pode_remanejar": false}, {"codigo": 149, "id_membro": "964eea93", "cep": "06413-010", "rua": "Rua Dempachi Nakayama", "celula": "Kairós", "sem_celula": false, "has_coord": true, "lat": -23.4913975, "lon": -46.8778867, "dist_atual": 2.47, "cel_proxima": "Adonai", "dist_proxima": 0.0, "pode_remanejar": true}, {"codigo": 150, "id_membro": "7792753f", "cep": "06413-080", "rua": "Rua Serra da Mantiqueira", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.4913975, "lon": -46.8778867, "dist_atual": null, "cel_proxima": "Adonai", "dist_proxima": 0.0, "pode_remanejar": false}, {"codigo": 151, "id_membro": "aad9f4b7", "cep": "06413-080", "rua": "Rua Serra da Mantiqueira", "celula": "Maná", "sem_celula": false, "has_coord": true, "lat": -23.4913975, "lon": -46.8778867, "dist_atual": 2.47, "cel_proxima": "Adonai", "dist_proxima": 0.0, "pode_remanejar": true}, {"codigo": 152, "id_membro": "0fb9d31d", "cep": "06413-695", "rua": "Rua Curitiba", "celula": "Adonai", "sem_celula": false, "has_coord": true, "lat": -23.484614, "lon": -46.879674, "dist_atual": 0.78, "cel_proxima": "Adonai", "dist_proxima": 0.78, "pode_remanejar": false}, {"codigo": 153, "id_membro": "3bcba695", "cep": "06413-695", "rua": "Rua Curitiba", "celula": "Adonai", "sem_celula": false, "has_coord": true, "lat": -23.484614, "lon": -46.879674, "dist_atual": 0.78, "cel_proxima": "Adonai", "dist_proxima": 0.78, "pode_remanejar": false}, {"codigo": 154, "id_membro": "4fe73e1f", "cep": "06413-695", "rua": "Rua Curitiba", "celula": "Atos", "sem_celula": false, "has_coord": true, "lat": -23.484614, "lon": -46.879674, "dist_atual": 3.06, "cel_proxima": "Adonai", "dist_proxima": 0.78, "pode_remanejar": true}, {"codigo": 155, "id_membro": "600c6b60", "cep": "06413-730", "rua": "Rua Alberto José da Mota", "celula": "Adonai", "sem_celula": false, "has_coord": true, "lat": -23.51056, "lon": -46.87611, "dist_atual": 2.14, "cel_proxima": "Elohim", "dist_proxima": 2.05, "pode_remanejar": false}, {"codigo": 156, "id_membro": "743c6846", "cep": "06413-730", "rua": "Rua Alberto José da Mota", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.51056, "lon": -46.87611, "dist_atual": null, "cel_proxima": "Elohim", "dist_proxima": 2.05, "pode_remanejar": false}, {"codigo": 157, "id_membro": "c6d26abb", "cep": "06413-730", "rua": "Rua Alberto José da Mota", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.51056, "lon": -46.87611, "dist_atual": null, "cel_proxima": "Elohim", "dist_proxima": 2.05, "pode_remanejar": false}, {"codigo": 158, "id_membro": "07004413", "cep": "06414-000", "rua": "Rua Marte", "celula": "Videira", "sem_celula": false, "has_coord": true, "lat": -23.4938913, "lon": -46.8700722, "dist_atual": 1.65, "cel_proxima": "Elohim", "dist_proxima": 0.1, "pode_remanejar": true}, {"codigo": 159, "id_membro": "1011de66", "cep": "06414-000", "rua": "Rua Marte", "celula": "Moriá", "sem_celula": false, "has_coord": true, "lat": -23.4938913, "lon": -46.8700722, "dist_atual": 1.65, "cel_proxima": "Elohim", "dist_proxima": 0.1, "pode_remanejar": true}, {"codigo": 160, "id_membro": "1fbfcfd8", "cep": "06414-000", "rua": "Rua Marte", "celula": "Maná", "sem_celula": false, "has_coord": true, "lat": -23.4938913, "lon": -46.8700722, "dist_atual": 1.65, "cel_proxima": "Elohim", "dist_proxima": 0.1, "pode_remanejar": true}, {"codigo": 161, "id_membro": "37aa16cd", "cep": "06414-000", "rua": "Rua Marte", "celula": "Maná", "sem_celula": false, "has_coord": true, "lat": -23.4938913, "lon": -46.8700722, "dist_atual": 1.65, "cel_proxima": "Elohim", "dist_proxima": 0.1, "pode_remanejar": true}, {"codigo": 162, "id_membro": "3b9895f9", "cep": "06414-000", "rua": "Rua Marte", "celula": "Berit", "sem_celula": false, "has_coord": true, "lat": -23.4938913, "lon": -46.8700722, "dist_atual": 1.65, "cel_proxima": "Elohim", "dist_proxima": 0.1, "pode_remanejar": true}, {"codigo": 163, "id_membro": "3f16b7bf", "cep": "06414-000", "rua": "Rua Marte", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.4938913, "lon": -46.8700722, "dist_atual": null, "cel_proxima": "Elohim", "dist_proxima": 0.1, "pode_remanejar": false}, {"codigo": 164, "id_membro": "4723816c", "cep": "06414-000", "rua": "Rua Marte", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.4938913, "lon": -46.8700722, "dist_atual": null, "cel_proxima": "Elohim", "dist_proxima": 0.1, "pode_remanejar": false}, {"codigo": 165, "id_membro": "4b11325f", "cep": "06414-000", "rua": "Rua Marte", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.4938913, "lon": -46.8700722, "dist_atual": null, "cel_proxima": "Elohim", "dist_proxima": 0.1, "pode_remanejar": false}, {"codigo": 166, "id_membro": "52a3ccf6", "cep": "06414-000", "rua": "Rua Marte", "celula": "Elohim", "sem_celula": false, "has_coord": true, "lat": -23.4938913, "lon": -46.8700722, "dist_atual": 0.1, "cel_proxima": "Elohim", "dist_proxima": 0.1, "pode_remanejar": false}, {"codigo": 167, "id_membro": "544fdbdd", "cep": "06414-000", "rua": "Rua Marte", "celula": "Galileu", "sem_celula": false, "has_coord": true, "lat": -23.4938913, "lon": -46.8700722, "dist_atual": 1.65, "cel_proxima": "Elohim", "dist_proxima": 0.1, "pode_remanejar": true}, {"codigo": 168, "id_membro": "6d402440", "cep": "06414-000", "rua": "Rua Marte", "celula": "Kairós", "sem_celula": false, "has_coord": true, "lat": -23.4938913, "lon": -46.8700722, "dist_atual": 1.65, "cel_proxima": "Elohim", "dist_proxima": 0.1, "pode_remanejar": true}, {"codigo": 169, "id_membro": "70ac6519", "cep": "06414-000", "rua": "Rua Marte", "celula": "Shekinah", "sem_celula": false, "has_coord": true, "lat": -23.4938913, "lon": -46.8700722, "dist_atual": 1.65, "cel_proxima": "Elohim", "dist_proxima": 0.1, "pode_remanejar": true}, {"codigo": 170, "id_membro": "73e21f2f", "cep": "06414-000", "rua": "Rua Marte", "celula": "Shekinah", "sem_celula": false, "has_coord": true, "lat": -23.4938913, "lon": -46.8700722, "dist_atual": 1.65, "cel_proxima": "Elohim", "dist_proxima": 0.1, "pode_remanejar": true}, {"codigo": 171, "id_membro": "85a8e6c9", "cep": "06414-000", "rua": "Rua Marte", "celula": "Moriá", "sem_celula": false, "has_coord": true, "lat": -23.4938913, "lon": -46.8700722, "dist_atual": 1.65, "cel_proxima": "Elohim", "dist_proxima": 0.1, "pode_remanejar": true}, {"codigo": 172, "id_membro": "97b15f09", "cep": "06414-000", "rua": "Rua Marte", "celula": "Berit", "sem_celula": false, "has_coord": true, "lat": -23.4938913, "lon": -46.8700722, "dist_atual": 1.65, "cel_proxima": "Elohim", "dist_proxima": 0.1, "pode_remanejar": true}, {"codigo": 173, "id_membro": "e3a4bb95", "cep": "06414-000", "rua": "Rua Marte", "celula": "Videira", "sem_celula": false, "has_coord": true, "lat": -23.4938913, "lon": -46.8700722, "dist_atual": 1.65, "cel_proxima": "Elohim", "dist_proxima": 0.1, "pode_remanejar": true}, {"codigo": 174, "id_membro": "10852c69", "cep": "06414-007", "rua": "Avenida Sebastião Davino dos Reis", "celula": "Betel", "sem_celula": false, "has_coord": true, "lat": -23.4938913, "lon": -46.8700722, "dist_atual": 6.03, "cel_proxima": "Elohim", "dist_proxima": 0.1, "pode_remanejar": true}, {"codigo": 175, "id_membro": "335007c7", "cep": "06414-007", "rua": "Avenida Sebastião Davino dos Reis", "celula": "Betel", "sem_celula": false, "has_coord": true, "lat": -23.4938913, "lon": -46.8700722, "dist_atual": 6.03, "cel_proxima": "Elohim", "dist_proxima": 0.1, "pode_remanejar": true}, {"codigo": 176, "id_membro": "5151f9a8", "cep": "06414-007", "rua": "Avenida Sebastião Davino dos Reis", "celula": "Shekinah", "sem_celula": false, "has_coord": true, "lat": -23.4938913, "lon": -46.8700722, "dist_atual": 1.65, "cel_proxima": "Elohim", "dist_proxima": 0.1, "pode_remanejar": true}, {"codigo": 177, "id_membro": "c80bf010", "cep": "06414-007", "rua": "Avenida Sebastião Davino dos Reis", "celula": "Shekinah", "sem_celula": false, "has_coord": true, "lat": -23.4938913, "lon": -46.8700722, "dist_atual": 1.65, "cel_proxima": "Elohim", "dist_proxima": 0.1, "pode_remanejar": true}, {"codigo": 178, "id_membro": "43bebe4b", "cep": "06414-020", "rua": "Rua Urano", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.4938913, "lon": -46.8700722, "dist_atual": null, "cel_proxima": "Elohim", "dist_proxima": 0.1, "pode_remanejar": false}, {"codigo": 179, "id_membro": "811615e5", "cep": "06414-020", "rua": "Rua Urano", "celula": "Maná", "sem_celula": false, "has_coord": true, "lat": -23.4938913, "lon": -46.8700722, "dist_atual": 1.65, "cel_proxima": "Elohim", "dist_proxima": 0.1, "pode_remanejar": true}, {"codigo": 180, "id_membro": "c3284fec", "cep": "06414-020", "rua": "Rua Urano", "celula": "Maná", "sem_celula": false, "has_coord": true, "lat": -23.4938913, "lon": -46.8700722, "dist_atual": 1.65, "cel_proxima": "Elohim", "dist_proxima": 0.1, "pode_remanejar": true}, {"codigo": 181, "id_membro": "09e5a0b3", "cep": "06414-025", "rua": "Rua Werner Goldberg", "celula": "Videira", "sem_celula": false, "has_coord": true, "lat": -23.4938913, "lon": -46.8700722, "dist_atual": 1.65, "cel_proxima": "Elohim", "dist_proxima": 0.1, "pode_remanejar": true}, {"codigo": 182, "id_membro": "838c7f4c", "cep": "06414-025", "rua": "Rua Werner Goldberg", "celula": "Videira", "sem_celula": false, "has_coord": true, "lat": -23.4938913, "lon": -46.8700722, "dist_atual": 1.65, "cel_proxima": "Elohim", "dist_proxima": 0.1, "pode_remanejar": true}, {"codigo": 183, "id_membro": "b8ebeb57", "cep": "06414-025", "rua": "Rua Werner Goldberg", "celula": "Kairós", "sem_celula": false, "has_coord": true, "lat": -23.4938913, "lon": -46.8700722, "dist_atual": 1.65, "cel_proxima": "Elohim", "dist_proxima": 0.1, "pode_remanejar": true}, {"codigo": 184, "id_membro": "c4d062b9", "cep": "06414-025", "rua": "Rua Werner Goldberg", "celula": "Kairós", "sem_celula": false, "has_coord": true, "lat": -23.4938913, "lon": -46.8700722, "dist_atual": 1.65, "cel_proxima": "Elohim", "dist_proxima": 0.1, "pode_remanejar": true}, {"codigo": 185, "id_membro": "10c3dd50", "cep": "06414-030", "rua": "Rua Lua", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.4938913, "lon": -46.8700722, "dist_atual": null, "cel_proxima": "Elohim", "dist_proxima": 0.1, "pode_remanejar": false}, {"codigo": 186, "id_membro": "ff7ea1a1", "cep": "06414-030", "rua": "Rua Lua", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.4938913, "lon": -46.8700722, "dist_atual": null, "cel_proxima": "Elohim", "dist_proxima": 0.1, "pode_remanejar": false}, {"codigo": 187, "id_membro": "516536d7", "cep": "06414-040", "rua": "Rua Saturno", "celula": "Elohim", "sem_celula": false, "has_coord": true, "lat": -23.4938913, "lon": -46.8700722, "dist_atual": 0.1, "cel_proxima": "Elohim", "dist_proxima": 0.1, "pode_remanejar": false}, {"codigo": 188, "id_membro": "dd15d211", "cep": "06414-040", "rua": "Rua Saturno", "celula": "Elohim", "sem_celula": false, "has_coord": true, "lat": -23.4938913, "lon": -46.8700722, "dist_atual": 0.1, "cel_proxima": "Elohim", "dist_proxima": 0.1, "pode_remanejar": false}, {"codigo": 189, "id_membro": "4a9474c8", "cep": "06414-070", "rua": "Rua Sol", "celula": "Videira", "sem_celula": false, "has_coord": true, "lat": -23.51056, "lon": -46.87611, "dist_atual": 2.17, "cel_proxima": "Elohim", "dist_proxima": 2.05, "pode_remanejar": false}, {"codigo": 190, "id_membro": "f0ffc020", "cep": "06415-060", "rua": "Rua Otávio Calegari", "celula": "Kairós", "sem_celula": false, "has_coord": true, "lat": -23.4899484, "lon": -46.8916084, "dist_atual": 3.81, "cel_proxima": "Adonai", "dist_proxima": 1.41, "pode_remanejar": true}, {"codigo": 191, "id_membro": "93cc88d0", "cep": "06415-130", "rua": "Rua Marechal Deodoro", "celula": "Ágape", "sem_celula": false, "has_coord": true, "lat": -23.4899484, "lon": -46.8916084, "dist_atual": 3.81, "cel_proxima": "Adonai", "dist_proxima": 1.41, "pode_remanejar": true}, {"codigo": 192, "id_membro": "38fa6d49", "cep": "06415-150", "rua": "Rua Carlos Lacerda", "celula": "Pura Benção", "sem_celula": false, "has_coord": true, "lat": -23.4899484, "lon": -46.8916084, "dist_atual": 3.81, "cel_proxima": "Adonai", "dist_proxima": 1.41, "pode_remanejar": true}, {"codigo": 193, "id_membro": "9c6eaf4a", "cep": "06415-150", "rua": "Rua Carlos Lacerda", "celula": "Pura Benção", "sem_celula": false, "has_coord": true, "lat": -23.4899484, "lon": -46.8916084, "dist_atual": 3.81, "cel_proxima": "Adonai", "dist_proxima": 1.41, "pode_remanejar": true}, {"codigo": 194, "id_membro": "ace0e73b", "cep": "06415-150", "rua": "Rua Carlos Lacerda", "celula": "Pura Benção", "sem_celula": false, "has_coord": true, "lat": -23.4899484, "lon": -46.8916084, "dist_atual": 3.81, "cel_proxima": "Adonai", "dist_proxima": 1.41, "pode_remanejar": true}, {"codigo": 195, "id_membro": "eda18b1c", "cep": "06415-150", "rua": "Rua Carlos Lacerda", "celula": "Pura Benção", "sem_celula": false, "has_coord": true, "lat": -23.4899484, "lon": -46.8916084, "dist_atual": 3.81, "cel_proxima": "Adonai", "dist_proxima": 1.41, "pode_remanejar": true}, {"codigo": 196, "id_membro": "f59c85e4", "cep": "06415-170", "rua": "Rua José Bonifácio", "celula": "Maná", "sem_celula": false, "has_coord": true, "lat": -23.4899484, "lon": -46.8916084, "dist_atual": 3.81, "cel_proxima": "Adonai", "dist_proxima": 1.41, "pode_remanejar": true}, {"codigo": 197, "id_membro": "ed3af751", "cep": "06419-080", "rua": "Rua Brooklin", "celula": "Maná", "sem_celula": false, "has_coord": true, "lat": -23.4823284, "lon": -46.8821827, "dist_atual": 3.42, "cel_proxima": "Adonai", "dist_proxima": 1.1, "pode_remanejar": true}, {"codigo": 198, "id_membro": "2cb7cdc3", "cep": "06419-180", "rua": "Rua Cambuci", "celula": "Não informada", "sem_celula": true, "has_coord": true, "lat": -23.4823284, "lon": -46.8821827, "dist_atual": null, "cel_proxima": "Adonai", "dist_proxima": 1.1, "pode_remanejar": false}, {"codigo": 199, "id_membro": "d3178f87", "cep": "06419-180", "rua": "Rua Cambuci", "celula": "Shekinah", "sem_celula": false, "has_coord": true, "lat": -23.4823284, "lon": -46.8821827, "dist_atual": 3.42, "cel_proxima": "Adonai", "dist_proxima": 1.1, "pode_remanejar": true}, {"codigo": 200, "id_membro": "1153c818", "cep": "06420-130", "rua": "Avenida Henrique Gonçalves Baptista", "celula": "Pura Benção", "sem_celula": false, "has_coord": true, "lat": -23.5142111, "lon": -46.8893192, "dist_atual": 3.57, "cel_proxima": "Adonai", "dist_proxima": 2.79, "pode_remanejar": true}, {"codigo": 201, "id_membro": "3c4cb71a", "cep": "06420-130", "rua": "Avenida Henrique Gonçalves Baptista", "celula": "Adonai", "sem_celula": false, "has_coord": true, "lat": -23.5142111, "lon": -46.8893192, "dist_atual": 2.79, "cel_proxima": "Adonai", "dist_proxima": 2.79, "pode_remanejar": false}, {"codigo": 202, "id_membro": "5f669ffa", "cep": "06420-130", "rua": "Avenida Henrique Gonçalves Baptista", "celula": "Adonai", "sem_celula": false, "has_coord": true, "lat": -23.5142111, "lon": -46.8893192, "dist_atual": 2.79, "cel_proxima": "Adonai", "dist_proxima": 2.79, "pode_remanejar": false}, {"codigo": 203, "id_membro": "fb7804b4", "cep": "06420-130", "rua": "Avenida Henrique Gonçalves Baptista", "celula": "Pura Benção", "sem_celula": false, "has_coord": true, "lat": -23.5142111, "lon": -46.8893192, "dist_atual": 3.57, "cel_proxima": "Adonai", "dist_proxima": 2.79, "pode_remanejar": true}, {"codigo": 204, "id_membro": "49650f8c", "cep": "06420-340", "rua": "Rua Pedro de Toledo", "celula": "Moriá", "sem_celula": false, "has_coord": true, "lat": -23.5142111, "lon": -46.8893192, "dist_atual": 3.57, "cel_proxima": "Adonai", "dist_proxima": 2.79, "pode_remanejar": true}, {"codigo": 205, "id_membro": "54c0e1b8", "cep": "06420-340", "rua": "Rua Pedro de Toledo", "celula": "Moriá", "sem_celula": false, "has_coord": true, "lat": -23.5142111, "lon": -46.8893192, "dist_atual": 3.57, "cel_proxima": "Adonai", "dist_proxima": 2.79, "pode_remanejar": true}, {"codigo": 206, "id_membro": "09ded4ff", "cep": "06422-100", "rua": "Estrada das Nações", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.51056, "lon": -46.87611, "dist_atual": null, "cel_proxima": "Elohim", "dist_proxima": 2.05, "pode_remanejar": false}, {"codigo": 207, "id_membro": "4ca4ffae", "cep": "06422-100", "rua": "Estrada das Nações", "celula": "Berit", "sem_celula": false, "has_coord": true, "lat": -23.51056, "lon": -46.87611, "dist_atual": 2.17, "cel_proxima": "Elohim", "dist_proxima": 2.05, "pode_remanejar": false}, {"codigo": 208, "id_membro": "a2c2a013", "cep": "06422-100", "rua": "Não informada", "celula": "Moriá", "sem_celula": false, "has_coord": true, "lat": -23.51056, "lon": -46.87611, "dist_atual": 2.17, "cel_proxima": "Elohim", "dist_proxima": 2.05, "pode_remanejar": false}, {"codigo": 209, "id_membro": "dd32e5ab", "cep": "06422-100", "rua": "Estrada das Nações", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.51056, "lon": -46.87611, "dist_atual": null, "cel_proxima": "Elohim", "dist_proxima": 2.05, "pode_remanejar": false}, {"codigo": 210, "id_membro": "f2c765b4", "cep": "06422-100", "rua": "Estrada das Nações", "celula": "Moriá", "sem_celula": false, "has_coord": true, "lat": -23.51056, "lon": -46.87611, "dist_atual": 2.17, "cel_proxima": "Elohim", "dist_proxima": 2.05, "pode_remanejar": false}, {"codigo": 211, "id_membro": "c74c8421", "cep": "06433-010", "rua": "Avenida Brigadeiro Manoel Rodrigues Jordão", "celula": "Moriá", "sem_celula": false, "has_coord": true, "lat": -23.535856, "lon": -46.885617, "dist_atual": 4.74, "cel_proxima": "Moriá", "dist_proxima": 4.74, "pode_remanejar": false}, {"codigo": 212, "id_membro": "da6ce740", "cep": "06433-010", "rua": "Avenida Brigadeiro Manoel Rodrigues Jordão", "celula": "Videira", "sem_celula": false, "has_coord": true, "lat": -23.535856, "lon": -46.885617, "dist_atual": 4.74, "cel_proxima": "Videira", "dist_proxima": 4.74, "pode_remanejar": false}, {"codigo": 213, "id_membro": "bfc05ad4", "cep": "06435-200", "rua": "Via dos Bororós", "celula": "Maranata", "sem_celula": false, "has_coord": true, "lat": -23.5314234, "lon": -46.8847429, "dist_atual": 4.3, "cel_proxima": "Maranata", "dist_proxima": 4.3, "pode_remanejar": false}, {"codigo": 214, "id_membro": "e68f2ba8", "cep": "06435-200", "rua": "Via dos Bororós", "celula": "Maranata", "sem_celula": false, "has_coord": true, "lat": -23.5314234, "lon": -46.8847429, "dist_atual": 4.3, "cel_proxima": "Maranata", "dist_proxima": 4.3, "pode_remanejar": false}, {"codigo": 215, "id_membro": "1b073cc3", "cep": "06435-250", "rua": "Rua Vital Brasil", "celula": "Qadosh", "sem_celula": false, "has_coord": true, "lat": -23.5314234, "lon": -46.8847429, "dist_atual": 4.3, "cel_proxima": "Qadosh", "dist_proxima": 4.3, "pode_remanejar": false}, {"codigo": 216, "id_membro": "02aadb08", "cep": "06435-300", "rua": "Rua José Lins do Rego", "celula": "Pura Benção", "sem_celula": false, "has_coord": true, "lat": -23.5314234, "lon": -46.8847429, "dist_atual": 4.3, "cel_proxima": "Pura Benção", "dist_proxima": 4.3, "pode_remanejar": false}, {"codigo": 217, "id_membro": "08ca5e6b", "cep": "06435-300", "rua": "Rua José Lins do Rego", "celula": "Não informada", "sem_celula": true, "has_coord": true, "lat": -23.5314234, "lon": -46.8847429, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 4.3, "pode_remanejar": false}, {"codigo": 218, "id_membro": "edd92bc9", "cep": "06435-300", "rua": "Rua José Lins do Rego", "celula": "Pura Benção", "sem_celula": false, "has_coord": true, "lat": -23.5314234, "lon": -46.8847429, "dist_atual": 4.3, "cel_proxima": "Pura Benção", "dist_proxima": 4.3, "pode_remanejar": false}, {"codigo": 219, "id_membro": "58da706a", "cep": "06436-020", "rua": "Rua Vera", "celula": "Qadosh", "sem_celula": false, "has_coord": true, "lat": -23.5368222, "lon": -46.8932056, "dist_atual": 5.33, "cel_proxima": "Adonai", "dist_proxima": 5.29, "pode_remanejar": false}, {"codigo": 220, "id_membro": "5ac55409", "cep": "06436-020", "rua": "Rua Vera", "celula": "Qadosh", "sem_celula": false, "has_coord": true, "lat": -23.5368222, "lon": -46.8932056, "dist_atual": 5.33, "cel_proxima": "Adonai", "dist_proxima": 5.29, "pode_remanejar": false}, {"codigo": 221, "id_membro": "175ba162", "cep": "06436-210", "rua": "Rua Dora", "celula": "Qadosh", "sem_celula": false, "has_coord": true, "lat": -23.5368222, "lon": -46.8932056, "dist_atual": 5.33, "cel_proxima": "Adonai", "dist_proxima": 5.29, "pode_remanejar": false}, {"codigo": 222, "id_membro": "886f9920", "cep": "06436-210", "rua": "Rua Dora", "celula": "Qadosh", "sem_celula": false, "has_coord": true, "lat": -23.5368222, "lon": -46.8932056, "dist_atual": 5.33, "cel_proxima": "Adonai", "dist_proxima": 5.29, "pode_remanejar": false}, {"codigo": 223, "id_membro": "e7b05e2e", "cep": "06436-230", "rua": "Rua Renata", "celula": "Maná", "sem_celula": false, "has_coord": true, "lat": -23.51056, "lon": -46.87611, "dist_atual": 2.17, "cel_proxima": "Elohim", "dist_proxima": 2.05, "pode_remanejar": false}, {"codigo": 224, "id_membro": "3317b5d8", "cep": "06437-240", "rua": "Rua Sena", "celula": "Ágape", "sem_celula": false, "has_coord": true, "lat": -23.5057226, "lon": -46.8754816, "dist_atual": 1.94, "cel_proxima": "Elohim", "dist_proxima": 1.52, "pode_remanejar": false}, {"codigo": 225, "id_membro": "728a48e4", "cep": "06437-240", "rua": "Rua Sena", "celula": "Ágape", "sem_celula": false, "has_coord": true, "lat": -23.5057226, "lon": -46.8754816, "dist_atual": 1.94, "cel_proxima": "Elohim", "dist_proxima": 1.52, "pode_remanejar": false}, {"codigo": 226, "id_membro": "9092f175", "cep": "06437-240", "rua": "Rua Sena", "celula": "Ágape", "sem_celula": false, "has_coord": true, "lat": -23.5057226, "lon": -46.8754816, "dist_atual": 1.94, "cel_proxima": "Elohim", "dist_proxima": 1.52, "pode_remanejar": false}, {"codigo": 227, "id_membro": "9c015783", "cep": "06437-240", "rua": "Rua Sena", "celula": "Ágape", "sem_celula": false, "has_coord": true, "lat": -23.5057226, "lon": -46.8754816, "dist_atual": 1.94, "cel_proxima": "Elohim", "dist_proxima": 1.52, "pode_remanejar": false}, {"codigo": 228, "id_membro": "2cc343de", "cep": "06440-000", "rua": "Avenida da Aldeia", "celula": "Monte Horebe", "sem_celula": false, "has_coord": true, "lat": -23.5111388, "lon": -46.8627345, "dist_atual": 1.14, "cel_proxima": "Monte Horebe", "dist_proxima": 1.14, "pode_remanejar": false}, {"codigo": 229, "id_membro": "fb44bc6a", "cep": "06440-000", "rua": "Avenida da Aldeia", "celula": "Monte Horebe", "sem_celula": false, "has_coord": true, "lat": -23.5111388, "lon": -46.8627345, "dist_atual": 1.14, "cel_proxima": "Monte Horebe", "dist_proxima": 1.14, "pode_remanejar": false}, {"codigo": 230, "id_membro": "5b062cfd", "cep": "06440-030", "rua": "Avenida Guilherme Rohn", "celula": "Pura Benção", "sem_celula": false, "has_coord": true, "lat": -23.5080909, "lon": -46.8622322, "dist_atual": 0.84, "cel_proxima": "Pura Benção", "dist_proxima": 0.84, "pode_remanejar": false}, {"codigo": 231, "id_membro": "7f03d5c3", "cep": "06440-030", "rua": "Avenida Guilherme Rohn", "celula": "Pura Benção", "sem_celula": false, "has_coord": true, "lat": -23.5080909, "lon": -46.8622322, "dist_atual": 0.84, "cel_proxima": "Pura Benção", "dist_proxima": 0.84, "pode_remanejar": false}, {"codigo": 232, "id_membro": "2ca9efdf", "cep": "06440-170", "rua": "Rua Goiás", "celula": "Ágape", "sem_celula": false, "has_coord": true, "lat": -23.5103783, "lon": -46.8564354, "dist_atual": 0.89, "cel_proxima": "Ágape", "dist_proxima": 0.89, "pode_remanejar": false}, {"codigo": 233, "id_membro": "0f5ceb21", "cep": "06440-183", "rua": "Rua Rondonia", "celula": "Adonai", "sem_celula": false, "has_coord": true, "lat": -23.51056, "lon": -46.87611, "dist_atual": 2.14, "cel_proxima": "Elohim", "dist_proxima": 2.05, "pode_remanejar": false}, {"codigo": 234, "id_membro": "2b48c167", "cep": "06440-183", "rua": "Rua Rondonia", "celula": "Adonai", "sem_celula": false, "has_coord": true, "lat": -23.51056, "lon": -46.87611, "dist_atual": 2.14, "cel_proxima": "Elohim", "dist_proxima": 2.05, "pode_remanejar": false}, {"codigo": 235, "id_membro": "9350615d", "cep": "06440-260", "rua": "Rua Luiz Scott", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.5111388, "lon": -46.8627345, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 1.14, "pode_remanejar": false}, {"codigo": 236, "id_membro": "fb1cf666", "cep": "06440-260", "rua": "Rua Luiz Scott", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.5111388, "lon": -46.8627345, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 1.14, "pode_remanejar": false}, {"codigo": 237, "id_membro": "736b08a2", "cep": "06440-310", "rua": "Rua Roraima", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.51056, "lon": -46.87611, "dist_atual": null, "cel_proxima": "Elohim", "dist_proxima": 2.05, "pode_remanejar": false}, {"codigo": 238, "id_membro": "bc0d2f09", "cep": "06440-310", "rua": "Rua Roraima", "celula": "Não informada", "sem_celula": true, "has_coord": true, "lat": -23.51056, "lon": -46.87611, "dist_atual": null, "cel_proxima": "Elohim", "dist_proxima": 2.05, "pode_remanejar": false}, {"codigo": 239, "id_membro": "0d6a41f3", "cep": "06442-070", "rua": "Rua Prefeito Irani de Almeida", "celula": "Adonai", "sem_celula": false, "has_coord": true, "lat": -23.513891, "lon": -46.8795121, "dist_atual": 2.51, "cel_proxima": "Adonai", "dist_proxima": 2.51, "pode_remanejar": false}, {"codigo": 240, "id_membro": "3979de90", "cep": "06442-070", "rua": "Rua Prefeito Irani de Almeida", "celula": "Adonai", "sem_celula": false, "has_coord": true, "lat": -23.513891, "lon": -46.8795121, "dist_atual": 2.51, "cel_proxima": "Adonai", "dist_proxima": 2.51, "pode_remanejar": false}, {"codigo": 241, "id_membro": "c3325d1b", "cep": "06442-070", "rua": "Rua Prefeito Irani de Almeida", "celula": "Monte Horebe", "sem_celula": false, "has_coord": true, "lat": -23.513891, "lon": -46.8795121, "dist_atual": 2.64, "cel_proxima": "Adonai", "dist_proxima": 2.51, "pode_remanejar": false}, {"codigo": 242, "id_membro": "5a5e2d08", "cep": "06443-009", "rua": "Avenida Grimaldo Tolaini", "celula": "Não informada", "sem_celula": true, "has_coord": true, "lat": -23.5329506, "lon": -46.8711662, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 3.7, "pode_remanejar": false}, {"codigo": 243, "id_membro": "6fa753af", "cep": "06443-009", "rua": "Avenida Grimaldo Tolaini", "celula": "Unidade", "sem_celula": false, "has_coord": true, "lat": -23.5329506, "lon": -46.8711662, "dist_atual": 9.59, "cel_proxima": "Ágape", "dist_proxima": 3.7, "pode_remanejar": true}, {"codigo": 244, "id_membro": "c209bf63", "cep": "06444-000", "rua": "Estrada Velha de Itapevi", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.542623, "lon": -46.8852555, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 5.33, "pode_remanejar": false}, {"codigo": 245, "id_membro": "2010e244", "cep": "06445-502", "rua": "Rua João Martins da Cruz", "celula": "Ágape", "sem_celula": false, "has_coord": true, "lat": -23.5327346, "lon": -46.8654228, "dist_atual": 3.49, "cel_proxima": "Ágape", "dist_proxima": 3.49, "pode_remanejar": false}, {"codigo": 246, "id_membro": "c22923b3", "cep": "06445-502", "rua": "Rua João Martins da Cruz", "celula": "Ágape", "sem_celula": false, "has_coord": true, "lat": -23.5327346, "lon": -46.8654228, "dist_atual": 3.49, "cel_proxima": "Ágape", "dist_proxima": 3.49, "pode_remanejar": false}, {"codigo": 247, "id_membro": "2eb4ac73", "cep": "06445-585", "rua": "Rua Duque de Vila Real", "celula": "Ágape", "sem_celula": false, "has_coord": true, "lat": -23.5327346, "lon": -46.8654228, "dist_atual": 3.49, "cel_proxima": "Ágape", "dist_proxima": 3.49, "pode_remanejar": false}, {"codigo": 248, "id_membro": "2b44fff9", "cep": "06447-010", "rua": "Avenida Aníbal Correia", "celula": "Ágape", "sem_celula": false, "has_coord": true, "lat": -23.5329506, "lon": -46.8711662, "dist_atual": 3.7, "cel_proxima": "Ágape", "dist_proxima": 3.7, "pode_remanejar": false}, {"codigo": 249, "id_membro": "48db6b6e", "cep": "06447-090", "rua": "Avenida Batatais", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.537965, "lon": -46.8792545, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 4.57, "pode_remanejar": false}, {"codigo": 250, "id_membro": "ef5077c3", "cep": "06447-090", "rua": "Avenida Batatais", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.537965, "lon": -46.8792545, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 4.57, "pode_remanejar": false}, {"codigo": 251, "id_membro": "9eb67a55", "cep": "06447-330", "rua": "Rua José", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.548647, "lon": -46.8851685, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 5.9, "pode_remanejar": false}, {"codigo": 252, "id_membro": "f084d131", "cep": "06447-330", "rua": "Rua José", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.548647, "lon": -46.8851685, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 5.9, "pode_remanejar": false}, {"codigo": 253, "id_membro": "592de67c", "cep": "06447-540", "rua": "Rua Água Marinha", "celula": "Maranata", "sem_celula": false, "has_coord": true, "lat": -23.51056, "lon": -46.87611, "dist_atual": 2.17, "cel_proxima": "Elohim", "dist_proxima": 2.05, "pode_remanejar": false}, {"codigo": 254, "id_membro": "1453d3b6", "cep": "06449-000", "rua": "Estrada dos Pinheiros", "celula": "Atos", "sem_celula": false, "has_coord": true, "lat": -23.542943, "lon": -46.8686108, "dist_atual": 4.67, "cel_proxima": "Atos", "dist_proxima": 4.67, "pode_remanejar": false}, {"codigo": 255, "id_membro": "26808aeb", "cep": "06449-000", "rua": "Estrada dos Pinheiros", "celula": "Atos", "sem_celula": false, "has_coord": true, "lat": -23.542943, "lon": -46.8686108, "dist_atual": 4.67, "cel_proxima": "Atos", "dist_proxima": 4.67, "pode_remanejar": false}, {"codigo": 256, "id_membro": "72298abb", "cep": "06449-000", "rua": "Estrada dos Pinheiros", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.542943, "lon": -46.8686108, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 4.67, "pode_remanejar": false}, {"codigo": 257, "id_membro": "72b4c196", "cep": "06449-000", "rua": "Estrada dos Pinheiros", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.542943, "lon": -46.8686108, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 4.67, "pode_remanejar": false}, {"codigo": 258, "id_membro": "2bdc1c2d", "cep": "06449-300", "rua": "Estrada das Pitas", "celula": "Betel", "sem_celula": false, "has_coord": true, "lat": -23.542943, "lon": -46.8686108, "dist_atual": 10.21, "cel_proxima": "Ágape", "dist_proxima": 4.67, "pode_remanejar": true}, {"codigo": 259, "id_membro": "47f3ec9b", "cep": "06449-300", "rua": "Estrada das Pitas", "celula": "Galileu", "sem_celula": false, "has_coord": true, "lat": -23.542943, "lon": -46.8686108, "dist_atual": 4.67, "cel_proxima": "Galileu", "dist_proxima": 4.67, "pode_remanejar": false}, {"codigo": 260, "id_membro": "66615920", "cep": "06449-300", "rua": "Estrada das Pitas", "celula": "Maranata", "sem_celula": false, "has_coord": true, "lat": -23.542943, "lon": -46.8686108, "dist_atual": 4.67, "cel_proxima": "Maranata", "dist_proxima": 4.67, "pode_remanejar": false}, {"codigo": 261, "id_membro": "81a7ac08", "cep": "06449-300", "rua": "Estrada das Pitas", "celula": "Berit", "sem_celula": false, "has_coord": true, "lat": -23.542943, "lon": -46.8686108, "dist_atual": 4.67, "cel_proxima": "Berit", "dist_proxima": 4.67, "pode_remanejar": false}, {"codigo": 262, "id_membro": "9681b3f6", "cep": "06449-300", "rua": "Estrada das Pitas", "celula": "Betel", "sem_celula": false, "has_coord": true, "lat": -23.542943, "lon": -46.8686108, "dist_atual": 10.21, "cel_proxima": "Ágape", "dist_proxima": 4.67, "pode_remanejar": true}, {"codigo": 263, "id_membro": "a634705f", "cep": "06449-300", "rua": "Estrada das Pitas", "celula": "Berit", "sem_celula": false, "has_coord": true, "lat": -23.542943, "lon": -46.8686108, "dist_atual": 4.67, "cel_proxima": "Berit", "dist_proxima": 4.67, "pode_remanejar": false}, {"codigo": 264, "id_membro": "b2a770a7", "cep": "06449-300", "rua": "Estrada das Pitas", "celula": "Galileu", "sem_celula": false, "has_coord": true, "lat": -23.542943, "lon": -46.8686108, "dist_atual": 4.67, "cel_proxima": "Galileu", "dist_proxima": 4.67, "pode_remanejar": false}, {"codigo": 265, "id_membro": "bab7d8df", "cep": "06449-300", "rua": "Estrada das Pitas", "celula": "Berit", "sem_celula": false, "has_coord": true, "lat": -23.542943, "lon": -46.8686108, "dist_atual": 4.67, "cel_proxima": "Berit", "dist_proxima": 4.67, "pode_remanejar": false}, {"codigo": 266, "id_membro": "487bc871", "cep": "06449-370", "rua": "R. Arealva", "celula": "Galileu", "sem_celula": false, "has_coord": true, "lat": -23.542943, "lon": -46.8686108, "dist_atual": 4.67, "cel_proxima": "Galileu", "dist_proxima": 4.67, "pode_remanejar": false}, {"codigo": 267, "id_membro": "4b68404e", "cep": "06449-370", "rua": "Rua Arealva", "celula": "Galileu", "sem_celula": false, "has_coord": true, "lat": -23.542943, "lon": -46.8686108, "dist_atual": 4.67, "cel_proxima": "Galileu", "dist_proxima": 4.67, "pode_remanejar": false}, {"codigo": 268, "id_membro": "88143b62", "cep": "06449-370", "rua": "Rua Arealva", "celula": "Galileu", "sem_celula": false, "has_coord": true, "lat": -23.542943, "lon": -46.8686108, "dist_atual": 4.67, "cel_proxima": "Galileu", "dist_proxima": 4.67, "pode_remanejar": false}, {"codigo": 269, "id_membro": "f1c895cb", "cep": "06449-370", "rua": "Rua Arealva", "celula": "Galileu", "sem_celula": false, "has_coord": true, "lat": -23.542943, "lon": -46.8686108, "dist_atual": 4.67, "cel_proxima": "Galileu", "dist_proxima": 4.67, "pode_remanejar": false}, {"codigo": 270, "id_membro": "0fe0f1ef", "cep": "06454-050", "rua": "Alameda Grajaú", "celula": "Adonai", "sem_celula": false, "has_coord": true, "lat": -23.4953194, "lon": -46.8470664, "dist_atual": 3.17, "cel_proxima": "Ágape", "dist_proxima": 1.27, "pode_remanejar": true}, {"codigo": 271, "id_membro": "24a76c0b", "cep": "06454-050", "rua": "Alameda Grajaú", "celula": "Adonai", "sem_celula": false, "has_coord": true, "lat": -23.4953194, "lon": -46.8470664, "dist_atual": 3.17, "cel_proxima": "Ágape", "dist_proxima": 1.27, "pode_remanejar": true}, {"codigo": 272, "id_membro": "63deffd7", "cep": "06454-050", "rua": "Alameda Grajaú", "celula": "Adonai", "sem_celula": false, "has_coord": true, "lat": -23.4953194, "lon": -46.8470664, "dist_atual": 3.17, "cel_proxima": "Ágape", "dist_proxima": 1.27, "pode_remanejar": true}, {"codigo": 273, "id_membro": "6f5ac271", "cep": "06454-050", "rua": "Alameda Grajaú", "celula": "Adonai", "sem_celula": false, "has_coord": true, "lat": -23.4953194, "lon": -46.8470664, "dist_atual": 3.17, "cel_proxima": "Ágape", "dist_proxima": 1.27, "pode_remanejar": true}, {"codigo": 274, "id_membro": "1b896695", "cep": "06454-080", "rua": "Alameda Itapecuru", "celula": "Elohim", "sem_celula": false, "has_coord": true, "lat": -23.4951258, "lon": -46.8453159, "dist_atual": 2.47, "cel_proxima": "Ágape", "dist_proxima": 1.42, "pode_remanejar": true}, {"codigo": 275, "id_membro": "aa72b4cf", "cep": "06454-080", "rua": "Alameda Itapecuru", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.4951258, "lon": -46.8453159, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 1.42, "pode_remanejar": false}, {"codigo": 276, "id_membro": "1575a688", "cep": "06460-020", "rua": "Avenida Tucunaré", "celula": "Maná", "sem_celula": false, "has_coord": true, "lat": -23.5099415, "lon": -46.8253288, "dist_atual": 3.32, "cel_proxima": "Maná", "dist_proxima": 3.32, "pode_remanejar": false}, {"codigo": 277, "id_membro": "c77bd4a5", "cep": "06460-020", "rua": "Avenida Tucunaré", "celula": "Não informada", "sem_celula": true, "has_coord": true, "lat": -23.5099415, "lon": -46.8253288, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 3.32, "pode_remanejar": false}, {"codigo": 278, "id_membro": "f5ce71f6", "cep": "06460-020", "rua": "Avenida Tucunaré", "celula": "Não informada", "sem_celula": true, "has_coord": true, "lat": -23.5099415, "lon": -46.8253288, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 3.32, "pode_remanejar": false}, {"codigo": 279, "id_membro": "0f72343b", "cep": "06462-250", "rua": "Rua Diogo Antônio Feijó", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.4832915, "lon": -46.805866, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 5.61, "pode_remanejar": false}, {"codigo": 280, "id_membro": "bb5ab930", "cep": "06462-250", "rua": "Rua Diogo Antônio Feijó", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.4832915, "lon": -46.805866, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 5.61, "pode_remanejar": false}, {"codigo": 281, "id_membro": "c523ea1f", "cep": "06462-250", "rua": "Rua Diogo Antônio Feijó", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.4832915, "lon": -46.805866, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 5.61, "pode_remanejar": false}, {"codigo": 282, "id_membro": "3671a759", "cep": "06465-134", "rua": "Rua Bonnard", "celula": "Não informada", "sem_celula": true, "has_coord": true, "lat": -23.5048194, "lon": -46.8380434, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 1.93, "pode_remanejar": false}, {"codigo": 283, "id_membro": "685e3d3b", "cep": "06465-134", "rua": "Rua Bonnard", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.5048194, "lon": -46.8380434, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 1.93, "pode_remanejar": false}, {"codigo": 284, "id_membro": "e0980833", "cep": "06465-134", "rua": "Rua Bonnard", "celula": "Betel", "sem_celula": false, "has_coord": true, "lat": -23.5048194, "lon": -46.8380434, "dist_atual": 9.45, "cel_proxima": "Ágape", "dist_proxima": 1.93, "pode_remanejar": true}, {"codigo": 285, "id_membro": "eb649514", "cep": "06465-134", "rua": "Rua Bonnard", "celula": "Unidade", "sem_celula": false, "has_coord": true, "lat": -23.5048194, "lon": -46.8380434, "dist_atual": 8.26, "cel_proxima": "Ágape", "dist_proxima": 1.93, "pode_remanejar": true}, {"codigo": 286, "id_membro": "edf9f815", "cep": "06465-134", "rua": "Rua Bonnard", "celula": "Betel", "sem_celula": false, "has_coord": true, "lat": -23.5048194, "lon": -46.8380434, "dist_atual": 9.45, "cel_proxima": "Ágape", "dist_proxima": 1.93, "pode_remanejar": true}, {"codigo": 287, "id_membro": "ff6014fc", "cep": "06473-073", "rua": "Avenida Sagitário", "celula": "Maná", "sem_celula": false, "has_coord": true, "lat": -23.51056, "lon": -46.87611, "dist_atual": 2.17, "cel_proxima": "Elohim", "dist_proxima": 2.05, "pode_remanejar": false}, {"codigo": 288, "id_membro": "e7ef3f1f", "cep": "06474-125", "rua": "Alameda Espanha", "celula": "Não informada", "sem_celula": true, "has_coord": true, "lat": -23.51056, "lon": -46.87611, "dist_atual": null, "cel_proxima": "Elohim", "dist_proxima": 2.05, "pode_remanejar": false}, {"codigo": 289, "id_membro": "07808678", "cep": "06475-060", "rua": "Alameda Tirana", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.51056, "lon": -46.87611, "dist_atual": null, "cel_proxima": "Elohim", "dist_proxima": 2.05, "pode_remanejar": false}, {"codigo": 290, "id_membro": "db3a7aec", "cep": "06475-060", "rua": "Alameda Tirana", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.51056, "lon": -46.87611, "dist_atual": null, "cel_proxima": "Elohim", "dist_proxima": 2.05, "pode_remanejar": false}, {"codigo": 291, "id_membro": "0ca96e26", "cep": "06475-250", "rua": "Alameda Munique", "celula": "Um dedo de Prosa", "sem_celula": false, "has_coord": true, "lat": -23.51056, "lon": -46.87611, "dist_atual": 2.17, "cel_proxima": "Elohim", "dist_proxima": 2.05, "pode_remanejar": false}, {"codigo": 292, "id_membro": "56aa3714", "cep": "06475-250", "rua": "Alameda Munique", "celula": "Um dedo de Prosa", "sem_celula": false, "has_coord": true, "lat": -23.51056, "lon": -46.87611, "dist_atual": 2.17, "cel_proxima": "Elohim", "dist_proxima": 2.05, "pode_remanejar": false}, {"codigo": 293, "id_membro": "bb517ef0", "cep": "06475-250", "rua": "Alameda Munique", "celula": "Não informada", "sem_celula": true, "has_coord": true, "lat": -23.51056, "lon": -46.87611, "dist_atual": null, "cel_proxima": "Elohim", "dist_proxima": 2.05, "pode_remanejar": false}, {"codigo": 294, "id_membro": "a395c90f", "cep": "06502-325", "rua": "Rua Suécia", "celula": "Moriá", "sem_celula": false, "has_coord": true, "lat": -23.4435945, "lon": -46.9299771, "dist_atual": 9.92, "cel_proxima": "Betel", "dist_proxima": 2.49, "pode_remanejar": true}, {"codigo": 295, "id_membro": "f4705543", "cep": "06502-325", "rua": "Rua Suécia", "celula": "Moriá", "sem_celula": false, "has_coord": true, "lat": -23.4435945, "lon": -46.9299771, "dist_atual": 9.92, "cel_proxima": "Betel", "dist_proxima": 2.49, "pode_remanejar": true}, {"codigo": 296, "id_membro": "81d4156f", "cep": "06514-340", "rua": "Rua Baquara", "celula": "Betel", "sem_celula": false, "has_coord": true, "lat": -23.4289208, "lon": -46.8267409, "dist_atual": 10.18, "cel_proxima": "Unidade", "dist_proxima": 6.92, "pode_remanejar": true}, {"codigo": 297, "id_membro": "abbded1b", "cep": "06514-340", "rua": "Rua Baquara", "celula": "Betel", "sem_celula": false, "has_coord": true, "lat": -23.4289208, "lon": -46.8267409, "dist_atual": 10.18, "cel_proxima": "Unidade", "dist_proxima": 6.92, "pode_remanejar": true}, {"codigo": 298, "id_membro": "7147c7aa", "cep": "06515-040", "rua": "Rua dos Limoeiros", "celula": "Adonai", "sem_celula": false, "has_coord": true, "lat": -23.4723324, "lon": -46.8979008, "dist_atual": 2.94, "cel_proxima": "Betel", "dist_proxima": 2.37, "pode_remanejar": true}, {"codigo": 299, "id_membro": "c4d870f3", "cep": "06515-350", "rua": "Rua Tapuyas", "celula": "Gileade", "sem_celula": false, "has_coord": true, "lat": -23.4737771, "lon": -46.8883156, "dist_atual": 4.52, "cel_proxima": "Adonai", "dist_proxima": 2.23, "pode_remanejar": true}, {"codigo": 300, "id_membro": "225bd556", "cep": "06516-075", "rua": "Rua Marselha", "celula": "Não informada", "sem_celula": true, "has_coord": true, "lat": -23.4810421, "lon": -46.8936127, "dist_atual": null, "cel_proxima": "Adonai", "dist_proxima": 1.97, "pode_remanejar": false}, {"codigo": 301, "id_membro": "5c0e68c8", "cep": "06519-335", "rua": "Alameda das Perobas", "celula": "Não informada", "sem_celula": true, "has_coord": true, "lat": -23.44417, "lon": -46.91778, "dist_atual": null, "cel_proxima": "Betel", "dist_proxima": 2.16, "pode_remanejar": false}, {"codigo": 302, "id_membro": "7ae324bd", "cep": "06519-370", "rua": "Alameda das Caviúnas", "celula": "Moriá", "sem_celula": false, "has_coord": true, "lat": -23.44417, "lon": -46.91778, "dist_atual": 8.98, "cel_proxima": "Betel", "dist_proxima": 2.16, "pode_remanejar": true}, {"codigo": 303, "id_membro": "ae04ef1c", "cep": "06519-370", "rua": "Alameda das Caviúnas", "celula": "Moriá", "sem_celula": false, "has_coord": true, "lat": -23.44417, "lon": -46.91778, "dist_atual": 8.98, "cel_proxima": "Betel", "dist_proxima": 2.16, "pode_remanejar": true}, {"codigo": 304, "id_membro": "3e2f42a3", "cep": "06519-465", "rua": "Alameda dos Antúrios", "celula": "Ágape", "sem_celula": false, "has_coord": true, "lat": -23.44417, "lon": -46.91778, "dist_atual": 8.98, "cel_proxima": "Betel", "dist_proxima": 2.16, "pode_remanejar": true}, {"codigo": 305, "id_membro": "6c1ff197", "cep": "06523-130", "rua": "Rua Guiana", "celula": "Kairós", "sem_celula": false, "has_coord": true, "lat": -23.486832, "lon": -46.9958305, "dist_atual": 14.28, "cel_proxima": "Betel", "dist_proxima": 8.24, "pode_remanejar": true}, {"codigo": 306, "id_membro": "9574a2d4", "cep": "06523-130", "rua": "Rua Guiana", "celula": "Kairós", "sem_celula": false, "has_coord": true, "lat": -23.486832, "lon": -46.9958305, "dist_atual": 14.28, "cel_proxima": "Betel", "dist_proxima": 8.24, "pode_remanejar": true}, {"codigo": 307, "id_membro": "b8e5daa8", "cep": "06532-060", "rua": "Rua do Chafariz", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.44417, "lon": -46.91778, "dist_atual": null, "cel_proxima": "Betel", "dist_proxima": 2.16, "pode_remanejar": false}, {"codigo": 308, "id_membro": "70ff0c30", "cep": "06532-421", "rua": "Estrada de Ipanema", "celula": "Ágape", "sem_celula": false, "has_coord": true, "lat": -23.44417, "lon": -46.91778, "dist_atual": 8.98, "cel_proxima": "Betel", "dist_proxima": 2.16, "pode_remanejar": true}, {"codigo": 309, "id_membro": "71924ed8", "cep": "06533-180", "rua": "Rua Aram", "celula": "Ágape", "sem_celula": false, "has_coord": true, "lat": -23.4224404, "lon": -46.8678259, "dist_atual": 8.96, "cel_proxima": "Unidade", "dist_proxima": 3.76, "pode_remanejar": true}, {"codigo": 310, "id_membro": "9d8fde4a", "cep": "06533-180", "rua": "Rua Aram", "celula": "Ágape", "sem_celula": false, "has_coord": true, "lat": -23.4224404, "lon": -46.8678259, "dist_atual": 8.96, "cel_proxima": "Unidade", "dist_proxima": 3.76, "pode_remanejar": true}, {"codigo": 311, "id_membro": "a3b6bb1e", "cep": "06537-380", "rua": "Alameda Arco-Íris", "celula": "Conhecer a Deus", "sem_celula": false, "has_coord": true, "lat": -23.44417, "lon": -46.91778, "dist_atual": 8.98, "cel_proxima": "Betel", "dist_proxima": 2.16, "pode_remanejar": true}, {"codigo": 312, "id_membro": "e54df5f8", "cep": "06537-380", "rua": "Alameda Arco-Íris", "celula": "Não informada", "sem_celula": true, "has_coord": true, "lat": -23.44417, "lon": -46.91778, "dist_atual": null, "cel_proxima": "Betel", "dist_proxima": 2.16, "pode_remanejar": false}, {"codigo": 313, "id_membro": "209a2397", "cep": "06539-098", "rua": "Alameda das Sálvias", "celula": "Gileade", "sem_celula": false, "has_coord": true, "lat": -23.4486537, "lon": -46.8910506, "dist_atual": 6.92, "cel_proxima": "Unidade", "dist_proxima": 0.0, "pode_remanejar": true}, {"codigo": 314, "id_membro": "275f3001", "cep": "06540-020", "rua": "Alameda Miruna", "celula": "Miruna", "sem_celula": false, "has_coord": true, "lat": -23.4486537, "lon": -46.8910506, "dist_atual": 6.92, "cel_proxima": "Unidade", "dist_proxima": 0.0, "pode_remanejar": true}, {"codigo": 315, "id_membro": "2792959c", "cep": "06540-020", "rua": "Alameda Miruna", "celula": "Um dedo de Prosa", "sem_celula": false, "has_coord": true, "lat": -23.4486537, "lon": -46.8910506, "dist_atual": 6.92, "cel_proxima": "Unidade", "dist_proxima": 0.0, "pode_remanejar": true}, {"codigo": 316, "id_membro": "62636ca2", "cep": "06540-020", "rua": "Alameda Miruna", "celula": "Miruna", "sem_celula": false, "has_coord": true, "lat": -23.4486537, "lon": -46.8910506, "dist_atual": 6.92, "cel_proxima": "Unidade", "dist_proxima": 0.0, "pode_remanejar": true}, {"codigo": 317, "id_membro": "c2a8ecb0", "cep": "06540-235", "rua": "Alameda Topázio,203  res:9", "celula": "Ágape", "sem_celula": false, "has_coord": true, "lat": -23.4486537, "lon": -46.8910506, "dist_atual": 6.92, "cel_proxima": "Unidade", "dist_proxima": 0.0, "pode_remanejar": true}, {"codigo": 318, "id_membro": "7a8d3c29", "cep": "06542-010", "rua": "Alameda Franca", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.4486537, "lon": -46.8910506, "dist_atual": null, "cel_proxima": "Unidade", "dist_proxima": 0.0, "pode_remanejar": false}, {"codigo": 319, "id_membro": "9e9f0ee6", "cep": "06542-010", "rua": "Alameda Franca", "celula": "Não informada", "sem_celula": true, "has_coord": true, "lat": -23.4486537, "lon": -46.8910506, "dist_atual": null, "cel_proxima": "Unidade", "dist_proxima": 0.0, "pode_remanejar": false}, {"codigo": 320, "id_membro": "c7e31574", "cep": "06542-010", "rua": "Alameda Franca", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.4486537, "lon": -46.8910506, "dist_atual": null, "cel_proxima": "Unidade", "dist_proxima": 0.0, "pode_remanejar": false}, {"codigo": 321, "id_membro": "1f2a59b5", "cep": "06542-070", "rua": "Alameda Ribeirão Preto", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.4486537, "lon": -46.8910506, "dist_atual": null, "cel_proxima": "Unidade", "dist_proxima": 0.0, "pode_remanejar": false}, {"codigo": 322, "id_membro": "08275b18", "cep": "06542-089", "rua": "Avenida Universitário", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.4486537, "lon": -46.8910506, "dist_atual": null, "cel_proxima": "Unidade", "dist_proxima": 0.0, "pode_remanejar": false}, {"codigo": 323, "id_membro": "11cc4748", "cep": "06542-089", "rua": "Avenida Universitário", "celula": "Betel", "sem_celula": false, "has_coord": true, "lat": -23.4486537, "lon": -46.8910506, "dist_atual": 3.31, "cel_proxima": "Unidade", "dist_proxima": 0.0, "pode_remanejar": true}, {"codigo": 324, "id_membro": "350d7026", "cep": "06542-089", "rua": "Avenida Universitário", "celula": "Unidade", "sem_celula": false, "has_coord": true, "lat": -23.4486537, "lon": -46.8910506, "dist_atual": 0.0, "cel_proxima": "Unidade", "dist_proxima": 0.0, "pode_remanejar": false}, {"codigo": 325, "id_membro": "7c60b87b", "cep": "06542-089", "rua": "Avenida Universitário", "celula": "Não informada", "sem_celula": true, "has_coord": true, "lat": -23.4486537, "lon": -46.8910506, "dist_atual": null, "cel_proxima": "Unidade", "dist_proxima": 0.0, "pode_remanejar": false}, {"codigo": 326, "id_membro": "92fa1e04", "cep": "06542-089", "rua": "Avenida Universitário", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.4486537, "lon": -46.8910506, "dist_atual": null, "cel_proxima": "Unidade", "dist_proxima": 0.0, "pode_remanejar": false}, {"codigo": 327, "id_membro": "9e3dd308", "cep": "06542-089", "rua": "Avenida Universitário", "celula": "Miruna", "sem_celula": false, "has_coord": true, "lat": -23.4486537, "lon": -46.8910506, "dist_atual": 6.92, "cel_proxima": "Unidade", "dist_proxima": 0.0, "pode_remanejar": true}, {"codigo": 328, "id_membro": "d6f01e18", "cep": "06542-089", "rua": "Avenida Universitário", "celula": "Betel", "sem_celula": false, "has_coord": true, "lat": -23.4486537, "lon": -46.8910506, "dist_atual": 3.31, "cel_proxima": "Unidade", "dist_proxima": 0.0, "pode_remanejar": true}, {"codigo": 329, "id_membro": "3dada06d", "cep": "06542-205", "rua": "Alameda dos Itapiúnas", "celula": "Maná", "sem_celula": false, "has_coord": true, "lat": -23.4486537, "lon": -46.8910506, "dist_atual": 6.92, "cel_proxima": "Unidade", "dist_proxima": 0.0, "pode_remanejar": true}, {"codigo": 330, "id_membro": "f17ba07d", "cep": "06542-205", "rua": "Alameda dos Itapiúnas", "celula": "Maná", "sem_celula": false, "has_coord": true, "lat": -23.4486537, "lon": -46.8910506, "dist_atual": 6.92, "cel_proxima": "Unidade", "dist_proxima": 0.0, "pode_remanejar": true}, {"codigo": 331, "id_membro": "84bd7a76", "cep": "06544-515", "rua": "Alameda Terras Altas", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.4615158, "lon": -46.998223, "dist_atual": null, "cel_proxima": "Betel", "dist_proxima": 8.07, "pode_remanejar": false}, {"codigo": 332, "id_membro": "2eaabec2", "cep": "06604-130", "rua": "Rua Sônia Maria F. de Andrade", "celula": "Berit", "sem_celula": false, "has_coord": true, "lat": -23.5275, "lon": -46.9025, "dist_atual": 5.43, "cel_proxima": "Adonai", "dist_proxima": 4.73, "pode_remanejar": true}, {"codigo": 333, "id_membro": "7bd583ed", "cep": "06604-130", "rua": "Rua Sônia Maria F. de Andrade", "celula": "Berit", "sem_celula": false, "has_coord": true, "lat": -23.5275, "lon": -46.9025, "dist_atual": 5.43, "cel_proxima": "Adonai", "dist_proxima": 4.73, "pode_remanejar": true}, {"codigo": 334, "id_membro": "ffc06129", "cep": "06604-326", "rua": "Avenida Trindade ", "celula": "Betel", "sem_celula": false, "has_coord": true, "lat": -23.5275, "lon": -46.9025, "dist_atual": 7.3, "cel_proxima": "Adonai", "dist_proxima": 4.73, "pode_remanejar": true}, {"codigo": 335, "id_membro": "6a9eda3f", "cep": "06606-300", "rua": "Rua das Magnólias", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.5275, "lon": -46.9025, "dist_atual": null, "cel_proxima": "Adonai", "dist_proxima": 4.73, "pode_remanejar": false}, {"codigo": 336, "id_membro": "01fe8399", "cep": "06618-010", "rua": "Rua Manoel Alves Garcia", "celula": "Não informada", "sem_celula": true, "has_coord": true, "lat": -23.5275, "lon": -46.9025, "dist_atual": null, "cel_proxima": "Adonai", "dist_proxima": 4.73, "pode_remanejar": false}, {"codigo": 337, "id_membro": "145c4023", "cep": "06618-010", "rua": "Rua Manoel Alves Garcia", "celula": "Maranata", "sem_celula": false, "has_coord": true, "lat": -23.5275, "lon": -46.9025, "dist_atual": 5.43, "cel_proxima": "Adonai", "dist_proxima": 4.73, "pode_remanejar": true}, {"codigo": 338, "id_membro": "7981b272", "cep": "06618-010", "rua": "Rua Manoel Alves Garcia", "celula": "Maranata", "sem_celula": false, "has_coord": true, "lat": -23.5275, "lon": -46.9025, "dist_atual": 5.43, "cel_proxima": "Adonai", "dist_proxima": 4.73, "pode_remanejar": true}, {"codigo": 339, "id_membro": "21f13cd4", "cep": "06620-279", "rua": "Rua Itaqui", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.5275, "lon": -46.9025, "dist_atual": null, "cel_proxima": "Adonai", "dist_proxima": 4.73, "pode_remanejar": false}, {"codigo": 340, "id_membro": "b628991e", "cep": "06620-295", "rua": "Rua Itapitanga", "celula": "Maranata", "sem_celula": false, "has_coord": true, "lat": -23.5275, "lon": -46.9025, "dist_atual": 5.43, "cel_proxima": "Adonai", "dist_proxima": 4.73, "pode_remanejar": true}, {"codigo": 341, "id_membro": "e37c7213", "cep": "06622-180", "rua": "Rua Ancião Sebastião Antonini", "celula": "Elohim", "sem_celula": false, "has_coord": true, "lat": -23.5275, "lon": -46.9025, "dist_atual": 5.09, "cel_proxima": "Adonai", "dist_proxima": 4.73, "pode_remanejar": false}, {"codigo": 342, "id_membro": "129274a0", "cep": "06624-330", "rua": "Rua Francisca Maria Bueno", "celula": "Betel", "sem_celula": false, "has_coord": true, "lat": -23.5465774, "lon": -46.9118667, "dist_atual": 9.26, "cel_proxima": "Adonai", "dist_proxima": 7.05, "pode_remanejar": true}, {"codigo": 343, "id_membro": "c6e9279e", "cep": "06624-330", "rua": "Rua Francisca Maria Bueno", "celula": "Betel", "sem_celula": false, "has_coord": true, "lat": -23.5465774, "lon": -46.9118667, "dist_atual": 9.26, "cel_proxima": "Adonai", "dist_proxima": 7.05, "pode_remanejar": true}, {"codigo": 344, "id_membro": "b9f87764", "cep": "06634-020", "rua": "Rua Jarama", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.5275, "lon": -46.9025, "dist_atual": null, "cel_proxima": "Adonai", "dist_proxima": 4.73, "pode_remanejar": false}, {"codigo": 345, "id_membro": "2ec127e4", "cep": "06636-150", "rua": "Rua Adelino Pinheiro", "celula": "Shekinah", "sem_celula": false, "has_coord": true, "lat": -23.5537323, "lon": -46.903823, "dist_atual": 7.45, "cel_proxima": "Adonai", "dist_proxima": 7.42, "pode_remanejar": false}, {"codigo": 346, "id_membro": "04a56d98", "cep": "06636-180", "rua": "Rua Rúbens Gomes", "celula": "Shekinah", "sem_celula": false, "has_coord": true, "lat": -23.5537323, "lon": -46.903823, "dist_atual": 7.45, "cel_proxima": "Adonai", "dist_proxima": 7.42, "pode_remanejar": false}, {"codigo": 347, "id_membro": "1801d70e", "cep": "06636-180", "rua": "Rua Rúbens Gomes", "celula": "Não informada", "sem_celula": true, "has_coord": true, "lat": -23.5537323, "lon": -46.903823, "dist_atual": null, "cel_proxima": "Adonai", "dist_proxima": 7.42, "pode_remanejar": false}, {"codigo": 348, "id_membro": "c74426f1", "cep": "06636-180", "rua": "Rua Rúbens Gomes", "celula": "Shekinah", "sem_celula": false, "has_coord": true, "lat": -23.5537323, "lon": -46.903823, "dist_atual": 7.45, "cel_proxima": "Adonai", "dist_proxima": 7.42, "pode_remanejar": false}, {"codigo": 349, "id_membro": "8caa8871", "cep": "06642-280", "rua": "Rua Safira", "celula": "Maranata", "sem_celula": false, "has_coord": true, "lat": -23.5275, "lon": -46.9025, "dist_atual": 5.43, "cel_proxima": "Adonai", "dist_proxima": 4.73, "pode_remanejar": true}, {"codigo": 350, "id_membro": "fd95aac4", "cep": "06645-145", "rua": "Marcellina", "celula": "Maranata", "sem_celula": false, "has_coord": false, "lat": null, "lon": null, "dist_atual": null, "cel_proxima": null, "dist_proxima": null, "pode_remanejar": false}, {"codigo": 351, "id_membro": "5b3bd282", "cep": "06648-145", "rua": "Rua Marcellina", "celula": "Maranata", "sem_celula": false, "has_coord": true, "lat": -23.5275, "lon": -46.9025, "dist_atual": 5.43, "cel_proxima": "Adonai", "dist_proxima": 4.73, "pode_remanejar": true}, {"codigo": 352, "id_membro": "a46a5b25", "cep": "06654-000", "rua": "Rua Bonifácio de Abreu", "celula": "Qadosh", "sem_celula": false, "has_coord": true, "lat": -23.54889, "lon": -46.93417, "dist_atual": 9.43, "cel_proxima": "Adonai", "dist_proxima": 8.59, "pode_remanejar": true}, {"codigo": 353, "id_membro": "ac1239fe", "cep": "06654-000", "rua": "Rua Bonifácio de Abreu", "celula": "Qadosh", "sem_celula": false, "has_coord": true, "lat": -23.54889, "lon": -46.93417, "dist_atual": 9.43, "cel_proxima": "Adonai", "dist_proxima": 8.59, "pode_remanejar": true}, {"codigo": 354, "id_membro": "2002fe63", "cep": "06654-740", "rua": "Via dos Abreus", "celula": "Atos", "sem_celula": false, "has_coord": true, "lat": -23.54889, "lon": -46.93417, "dist_atual": 9.43, "cel_proxima": "Adonai", "dist_proxima": 8.59, "pode_remanejar": true}, {"codigo": 355, "id_membro": "94244124", "cep": "06654-740", "rua": "Via dos Abreus", "celula": "Atos", "sem_celula": false, "has_coord": true, "lat": -23.54889, "lon": -46.93417, "dist_atual": 9.43, "cel_proxima": "Adonai", "dist_proxima": 8.59, "pode_remanejar": true}, {"codigo": 356, "id_membro": "6e485cc4", "cep": "06655-802", "rua": "Rua Dona Odila Simões Brand", "celula": "Galileu", "sem_celula": false, "has_coord": true, "lat": -23.559853, "lon": -46.9106109, "dist_atual": 8.42, "cel_proxima": "Adonai", "dist_proxima": 8.31, "pode_remanejar": false}, {"codigo": 357, "id_membro": "aa85e78c", "cep": "06655-802", "rua": "Rua Dona Odila Simões Brand", "celula": "Galileu", "sem_celula": false, "has_coord": true, "lat": -23.559853, "lon": -46.9106109, "dist_atual": 8.42, "cel_proxima": "Adonai", "dist_proxima": 8.31, "pode_remanejar": false}, {"codigo": 358, "id_membro": "d71914d0", "cep": "06655-802", "rua": "Rua Dona Odila Simões Brand", "celula": "Galileu", "sem_celula": false, "has_coord": true, "lat": -23.559853, "lon": -46.9106109, "dist_atual": 8.42, "cel_proxima": "Adonai", "dist_proxima": 8.31, "pode_remanejar": false}, {"codigo": 359, "id_membro": "78660de7", "cep": "06657-430", "rua": "Rua Serra das Araras", "celula": "Elohim", "sem_celula": false, "has_coord": true, "lat": -23.5566246, "lon": -46.9302689, "dist_atual": 9.39, "cel_proxima": "Adonai", "dist_proxima": 9.01, "pode_remanejar": false}, {"codigo": 360, "id_membro": "d2bdfe79", "cep": "06657-430", "rua": "Rua Serra das Araras", "celula": "Elohim", "sem_celula": false, "has_coord": true, "lat": -23.5566246, "lon": -46.9302689, "dist_atual": 9.39, "cel_proxima": "Adonai", "dist_proxima": 9.01, "pode_remanejar": false}, {"codigo": 361, "id_membro": "09602c7c", "cep": "06693-090", "rua": "Rua Antônio Gonçalo da Costa", "celula": "Pura Benção", "sem_celula": false, "has_coord": true, "lat": -23.5400102, "lon": -46.9341994, "dist_atual": 8.93, "cel_proxima": "Adonai", "dist_proxima": 7.89, "pode_remanejar": true}, {"codigo": 362, "id_membro": "f36c133e", "cep": "06693-090", "rua": "Rua Antônio Gonçalo da Costa", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.5400102, "lon": -46.9341994, "dist_atual": null, "cel_proxima": "Adonai", "dist_proxima": 7.89, "pode_remanejar": false}, {"codigo": 363, "id_membro": "5f80cc81", "cep": "06704-512", "rua": "Rua Antônio Lopes", "celula": "Qadosh", "sem_celula": false, "has_coord": true, "lat": -23.60389, "lon": -46.91917, "dist_atual": 12.95, "cel_proxima": "Qadosh", "dist_proxima": 12.95, "pode_remanejar": false}, {"codigo": 364, "id_membro": "b4738425", "cep": "06704-512", "rua": "Rua Antônio Lopes", "celula": "Qadosh", "sem_celula": false, "has_coord": true, "lat": -23.60389, "lon": -46.91917, "dist_atual": 12.95, "cel_proxima": "Qadosh", "dist_proxima": 12.95, "pode_remanejar": false}, {"codigo": 365, "id_membro": "d87cd499", "cep": "06704-512", "rua": "Rua Antônio Lopes", "celula": "Qadosh", "sem_celula": false, "has_coord": true, "lat": -23.60389, "lon": -46.91917, "dist_atual": 12.95, "cel_proxima": "Qadosh", "dist_proxima": 12.95, "pode_remanejar": false}, {"codigo": 366, "id_membro": "72e85e32", "cep": "06705-620", "rua": "Alameda Tapiti", "celula": "Berit", "sem_celula": false, "has_coord": true, "lat": -23.60389, "lon": -46.91917, "dist_atual": 12.95, "cel_proxima": "Berit", "dist_proxima": 12.95, "pode_remanejar": false}, {"codigo": 367, "id_membro": "d06e310b", "cep": "06705-620", "rua": "Alameda Tapiti", "celula": "Berit", "sem_celula": false, "has_coord": true, "lat": -23.60389, "lon": -46.91917, "dist_atual": 12.95, "cel_proxima": "Berit", "dist_proxima": 12.95, "pode_remanejar": false}, {"codigo": 368, "id_membro": "94202d15", "cep": "06707-100", "rua": "Avenida José Giorgi", "celula": "Shekinah", "sem_celula": false, "has_coord": true, "lat": -23.5911271, "lon": -46.8640329, "dist_atual": 9.89, "cel_proxima": "Shekinah", "dist_proxima": 9.89, "pode_remanejar": false}, {"codigo": 369, "id_membro": "441b7405", "cep": "06715-400", "rua": "Estrada do Lutero", "celula": "Galileu", "sem_celula": false, "has_coord": true, "lat": -23.6030294, "lon": -46.875408, "dist_atual": 11.35, "cel_proxima": "Galileu", "dist_proxima": 11.35, "pode_remanejar": false}, {"codigo": 370, "id_membro": "9ea48623", "cep": "06715-400", "rua": "Estrada do Lutero", "celula": "Galileu", "sem_celula": false, "has_coord": true, "lat": -23.6030294, "lon": -46.875408, "dist_atual": 11.35, "cel_proxima": "Galileu", "dist_proxima": 11.35, "pode_remanejar": false}, {"codigo": 371, "id_membro": "308f7e30", "cep": "06716-200", "rua": "Rua Itajobi", "celula": "Pura Benção", "sem_celula": false, "has_coord": true, "lat": -23.60389, "lon": -46.91917, "dist_atual": 12.95, "cel_proxima": "Pura Benção", "dist_proxima": 12.95, "pode_remanejar": false}, {"codigo": 372, "id_membro": "716e2f1e", "cep": "06721-507", "rua": "Rua Mário Andreatini", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.60389, "lon": -46.91917, "dist_atual": null, "cel_proxima": "Ágape", "dist_proxima": 12.95, "pode_remanejar": false}, {"codigo": 373, "id_membro": "95f9dbeb", "cep": "18079-470", "rua": "Rua Francisco Antonio Netto", "celula": "Não participa de célula", "sem_celula": true, "has_coord": true, "lat": -23.50167, "lon": -47.45806, "dist_atual": null, "cel_proxima": "Betel", "dist_proxima": 55.13, "pode_remanejar": false}, {"codigo": 374, "id_membro": "5720a234", "cep": "18105-012", "rua": "Rua Luiz Henrique da Costa", "celula": "Maná", "sem_celula": false, "has_coord": true, "lat": -23.50167, "lon": -47.45806, "dist_atual": 61.31, "cel_proxima": "Betel", "dist_proxima": 55.13, "pode_remanejar": true}, {"codigo": 375, "id_membro": "c2daff4e", "cep": "18105-012", "rua": "Rua Luiz Henrique da Costa", "celula": "Maná", "sem_celula": false, "has_coord": true, "lat": -23.50167, "lon": -47.45806, "dist_atual": 61.31, "cel_proxima": "Betel", "dist_proxima": 55.13, "pode_remanejar": true}, {"codigo": 376, "id_membro": "da541813", "cep": "96026-090", "rua": "Não informada", "celula": "Novo Nascimento", "sem_celula": false, "has_coord": false, "lat": null, "lon": null, "dist_atual": null, "cel_proxima": null, "dist_proxima": null, "pode_remanejar": false}, {"codigo": 377, "id_membro": "01460b10", "cep": "Não inf.", "rua": "Não informada", "celula": "Não participa de célula", "sem_celula": true, "has_coord": false, "lat": null, "lon": null, "dist_atual": null, "cel_proxima": null, "dist_proxima": null, "pode_remanejar": false}, {"codigo": 378, "id_membro": "08112436", "cep": "Não inf.", "rua": "Não informada", "celula": "Não informada", "sem_celula": true, "has_coord": false, "lat": null, "lon": null, "dist_atual": null, "cel_proxima": null, "dist_proxima": null, "pode_remanejar": false}, {"codigo": 379, "id_membro": "0a1b4134", "cep": "Não inf.", "rua": "Não informada", "celula": "Não informada", "sem_celula": true, "has_coord": false, "lat": null, "lon": null, "dist_atual": null, "cel_proxima": null, "dist_proxima": null, "pode_remanejar": false}, {"codigo": 380, "id_membro": "0a40176a", "cep": "Não inf.", "rua": "Não informada", "celula": "Novo Nascimento", "sem_celula": false, "has_coord": false, "lat": null, "lon": null, "dist_atual": null, "cel_proxima": null, "dist_proxima": null, "pode_remanejar": false}, {"codigo": 381, "id_membro": "1a8ddcd6", "cep": "Não inf.", "rua": "Não informada", "celula": "Galileu", "sem_celula": false, "has_coord": false, "lat": null, "lon": null, "dist_atual": null, "cel_proxima": null, "dist_proxima": null, "pode_remanejar": false}, {"codigo": 382, "id_membro": "1dec8951", "cep": "Não inf.", "rua": "Não informada", "celula": "Não informada", "sem_celula": true, "has_coord": false, "lat": null, "lon": null, "dist_atual": null, "cel_proxima": null, "dist_proxima": null, "pode_remanejar": false}, {"codigo": 383, "id_membro": "2083977a", "cep": "Não inf.", "rua": "Não informada", "celula": "Novo Nascimento", "sem_celula": false, "has_coord": false, "lat": null, "lon": null, "dist_atual": null, "cel_proxima": null, "dist_proxima": null, "pode_remanejar": false}, {"codigo": 384, "id_membro": "22e149d2", "cep": "06401-160", "rua": "Av. Henriqueta Mendes Guerra ", "celula": "Pura Benção", "sem_celula": false, "has_coord": true, "lat": -23.5104055, "lon": -46.8771413, "dist_atual": 2.26, "cel_proxima": "Elohim", "dist_proxima": 2.07, "pode_remanejar": false}, {"codigo": 385, "id_membro": "2c65658a", "cep": "Não inf.", "rua": "Não informada", "celula": "Não informada", "sem_celula": true, "has_coord": false, "lat": null, "lon": null, "dist_atual": null, "cel_proxima": null, "dist_proxima": null, "pode_remanejar": false}, {"codigo": 386, "id_membro": "2ccab675", "cep": "Não inf.", "rua": "Não informada", "celula": "Não participa de célula", "sem_celula": true, "has_coord": false, "lat": null, "lon": null, "dist_atual": null, "cel_proxima": null, "dist_proxima": null, "pode_remanejar": false}, {"codigo": 387, "id_membro": "330f8edb", "cep": "Não inf.", "rua": "Não informada", "celula": "Não informada", "sem_celula": true, "has_coord": false, "lat": null, "lon": null, "dist_atual": null, "cel_proxima": null, "dist_proxima": null, "pode_remanejar": false}, {"codigo": 388, "id_membro": "4c17085a", "cep": "Não inf.", "rua": "Não informada", "celula": "Não participa de célula", "sem_celula": true, "has_coord": false, "lat": null, "lon": null, "dist_atual": null, "cel_proxima": null, "dist_proxima": null, "pode_remanejar": false}, {"codigo": 389, "id_membro": "4c7b8f84", "cep": "Não inf.", "rua": "Não informada", "celula": "Não informada", "sem_celula": true, "has_coord": false, "lat": null, "lon": null, "dist_atual": null, "cel_proxima": null, "dist_proxima": null, "pode_remanejar": false}, {"codigo": 390, "id_membro": "59c30ae4", "cep": "Não inf.", "rua": "Não informada", "celula": "Não informada", "sem_celula": true, "has_coord": false, "lat": null, "lon": null, "dist_atual": null, "cel_proxima": null, "dist_proxima": null, "pode_remanejar": false}, {"codigo": 391, "id_membro": "6d8aaea6", "cep": "Não inf.", "rua": "Não informada", "celula": "Não participa de célula", "sem_celula": true, "has_coord": false, "lat": null, "lon": null, "dist_atual": null, "cel_proxima": null, "dist_proxima": null, "pode_remanejar": false}, {"codigo": 392, "id_membro": "77a82546", "cep": "Não inf.", "rua": "Não informada", "celula": "Não informada", "sem_celula": true, "has_coord": false, "lat": null, "lon": null, "dist_atual": null, "cel_proxima": null, "dist_proxima": null, "pode_remanejar": false}, {"codigo": 393, "id_membro": "7d78b554", "cep": "Não inf.", "rua": "Não informada", "celula": "Não participa de célula", "sem_celula": true, "has_coord": false, "lat": null, "lon": null, "dist_atual": null, "cel_proxima": null, "dist_proxima": null, "pode_remanejar": false}, {"codigo": 394, "id_membro": "a0056ee0", "cep": "Não inf.", "rua": "Não informada", "celula": "Não informada", "sem_celula": true, "has_coord": false, "lat": null, "lon": null, "dist_atual": null, "cel_proxima": null, "dist_proxima": null, "pode_remanejar": false}, {"codigo": 395, "id_membro": "c01dfad0", "cep": "Não inf.", "rua": "Não informada", "celula": "Kairós", "sem_celula": false, "has_coord": false, "lat": null, "lon": null, "dist_atual": null, "cel_proxima": null, "dist_proxima": null, "pode_remanejar": false}, {"codigo": 396, "id_membro": "c3210ea5", "cep": "Não inf.", "rua": "Não informada", "celula": "Não participa de célula", "sem_celula": true, "has_coord": false, "lat": null, "lon": null, "dist_atual": null, "cel_proxima": null, "dist_proxima": null, "pode_remanejar": false}, {"codigo": 397, "id_membro": "ccd002af", "cep": "Não inf.", "rua": "Não informada", "celula": "Não participa de célula", "sem_celula": true, "has_coord": false, "lat": null, "lon": null, "dist_atual": null, "cel_proxima": null, "dist_proxima": null, "pode_remanejar": false}, {"codigo": 398, "id_membro": "cf7cf80e", "cep": "Não inf.", "rua": "Não informada", "celula": "Não informada", "sem_celula": true, "has_coord": false, "lat": null, "lon": null, "dist_atual": null, "cel_proxima": null, "dist_proxima": null, "pode_remanejar": false}, {"codigo": 399, "id_membro": "cfcc3938", "cep": "Não inf.", "rua": "Não informada", "celula": "Não participa de célula", "sem_celula": true, "has_coord": false, "lat": null, "lon": null, "dist_atual": null, "cel_proxima": null, "dist_proxima": null, "pode_remanejar": false}, {"codigo": 400, "id_membro": "d4ccdb6a", "cep": "Não inf.", "rua": "Não informada", "celula": "Não informada", "sem_celula": true, "has_coord": false, "lat": null, "lon": null, "dist_atual": null, "cel_proxima": null, "dist_proxima": null, "pode_remanejar": false}, {"codigo": 401, "id_membro": "d68380b5", "cep": "Não inf.", "rua": "Não informada", "celula": "Não participa de célula", "sem_celula": true, "has_coord": false, "lat": null, "lon": null, "dist_atual": null, "cel_proxima": null, "dist_proxima": null, "pode_remanejar": false}, {"codigo": 402, "id_membro": "e87c0437", "cep": "Não inf.", "rua": "Não informada", "celula": "Novo Nascimento", "sem_celula": false, "has_coord": false, "lat": null, "lon": null, "dist_atual": null, "cel_proxima": null, "dist_proxima": null, "pode_remanejar": false}, {"codigo": 403, "id_membro": "ea7a1057", "cep": "Não inf.", "rua": "Não informada", "celula": "Não informada", "sem_celula": true, "has_coord": false, "lat": null, "lon": null, "dist_atual": null, "cel_proxima": null, "dist_proxima": null, "pode_remanejar": false}, {"codigo": 404, "id_membro": "eabae49e", "cep": "Não inf.", "rua": "Carlos Campos", "celula": "Kairós", "sem_celula": false, "has_coord": false, "lat": null, "lon": null, "dist_atual": null, "cel_proxima": null, "dist_proxima": null, "pode_remanejar": false}, {"codigo": 405, "id_membro": "fcf36e3b", "cep": "Não inf.", "rua": "Não informada", "celula": "Não informada", "sem_celula": true, "has_coord": false, "lat": null, "lon": null, "dist_atual": null, "cel_proxima": null, "dist_proxima": null, "pode_remanejar": false}, {"codigo": 406, "id_membro": "fd00c686", "cep": "Não inf.", "rua": "Não informada", "celula": "Não informada", "sem_celula": true, "has_coord": false, "lat": null, "lon": null, "dist_atual": null, "cel_proxima": null, "dist_proxima": null, "pode_remanejar": false}];
+
+let selectedCelulaId = null;
+let currentRadiusKm = 2.0;
+let filters = {
+  own: true,
+  otherNear: true,
+  noCell: true,
+  allOthers: false
+};
+
+// Initialize Map
+//const map = L.map('map').setView([-23.495, -46.875], 12);
+//L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+//  attribution: '&copy; OpenStreetMap &copy; CARTO',
+//  maxZoom: 19
+//}).addTo(map);
+
+
+// Initialize Map
+
+const map = L.map('map').setView([-23.495, -46.875], 12);
+L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+  attribution: 'Tiles &copy; Esri &mdash; Source: Esri, DeLorme, NAVTEQ, USGS, Intermap, iPC, NRCAN, Esri Japan, METI, Esri China (Hong Kong), Esri (Thailand), TomTom, 2012',
+  maxZoom: 19
+}).addTo(map);
+
+
+const layerGroup = L.layerGroup().addTo(map);
+
+function haversine(lat1, lon1, lat2, lon2) {
+  const R = 6371.0;
+  const toRad = d => d * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
+  return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// Small deterministic jitter for overlapping points (e.g. same CEP or headquarters)
+function jitter(val, seed, scale = 0.00045) {
+  const x = Math.sin(seed * 9999) * 10000;
+  const frac = x - Math.floor(x) - 0.5;
+  return val + frac * scale;
+}
+
+function switchTab(tab) {
+  document.getElementById('btn-tab-map').classList.toggle('active', tab === 'map');
+  document.getElementById('btn-tab-stats').classList.toggle('active', tab === 'stats');
+  document.getElementById('map-view').style.display = tab === 'map' ? 'flex' : 'none';
+  document.getElementById('stats-view').style.display = tab === 'stats' ? 'block' : 'none';
+  if (tab === 'map') {
+    setTimeout(() => map.invalidateSize(), 100);
+  } else {
+    renderStatsTables();
+  }
+}
+
+function updateRadius(val) {
+  currentRadiusKm = parseFloat(val);
+  document.getElementById('radius-label').innerText = currentRadiusKm.toFixed(1) + ' km';
+  document.getElementById('stats-radius-txt').innerText = currentRadiusKm.toFixed(1);
+  renderMap();
+  if (document.getElementById('stats-view').style.display === 'block') {
+    renderStatsTables();
+  }
+}
+
+function toggleFilter(key) {
+  filters[key] = !filters[key];
+  const mapIds = { own: 'pill-own', otherNear: 'pill-other-near', noCell: 'pill-no-cell', allOthers: 'pill-all-others' };
+  document.getElementById(mapIds[key]).classList.toggle('active', filters[key]);
+  renderMap();
+}
+
+function selectCelula(id) {
+  selectedCelulaId = id;
+  renderCelulaList();
+  renderMap();
+  const cel = CELULAS.find(c => c.id === id);
+  if (cel) {
+    map.setView([cel.lat, cel.lon], 14);
+  }
+}
+
+function selectAllOverview() {
+  selectedCelulaId = null;
+  renderCelulaList();
+  renderMap();
+  map.setView([-23.495, -46.875], 12);
+}
+
+function renderCelulaList() {
+  const q = document.getElementById('search-celula').value.toLowerCase();
+  const container = document.getElementById('celula-list');
+  container.innerHTML = '';
+
+  CELULAS.filter(c => c.nome.toLowerCase().includes(q) || c.cep.includes(q) || c.localidade.toLowerCase().includes(q))
+    .forEach(c => {
+      const totalMembros = MEMBROS.filter(m => m.celula === c.nome).length;
+      const div = document.createElement('div');
+      div.className = 'celula-item' + (selectedCelulaId === c.id ? ' selected' : '');
+      div.onclick = () => selectCelula(c.id);
+      div.innerHTML = `
+        <div class="celula-item-header">
+          <span class="celula-name">${c.nome}</span>
+          <span class="badge-cep ${c.is_sede_cep ? 'badge-sede' : ''}">${c.cep}</span>
+        </div>
+        <div class="celula-meta">
+          <span>${c.localidade}</span>
+          <strong>${totalMembros} membros</strong>
+        </div>
+      `;
+      container.appendChild(div);
+    });
+}
+
+function createHouseIcon(isSelected, isSede) {
+  const bg = isSelected ? '#dc2626' : (isSede ? '#d97706' : '#1e365a');
+  const size = isSelected ? 34 : 26;
+  return L.divIcon({
+    className: 'custom-house-icon',
+    html: `<div style="background:${bg}; color:#fff; width:${size}px; height:${size}px; border-radius:50%; display:flex; align-items:center; justify-content:center; border:2px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,0.35); font-size:${isSelected ? 15 : 12}px;">
+             <i class="fa-solid fa-house-chimney"></i>
+           </div>`,
+    iconSize: [size, size],
+    iconAnchor: [size/2, size/2]
+  });
+}
+
+function renderMap() {
+  layerGroup.clearLayers();
+  const selectedCel = CELULAS.find(c => c.id === selectedCelulaId);
+
+  // Draw radius circle if a cell is selected
+  if (selectedCel) {
+    L.circle([selectedCel.lat, selectedCel.lon], {
+      radius: currentRadiusKm * 1000,
+      color: '#1e365a',
+      weight: 2,
+      dashArray: '6, 6',
+      fillColor: '#2563eb',
+      fillOpacity: 0.08
+    }).addTo(layerGroup);
+  }
+
+  // Plot members
+  MEMBROS.forEach(m => {
+    if (!m.has_coord) return;
+
+    let category = 'other';
+    let color = '#9ca3af';
+    let radius = 5;
+    let distToSelected = null;
+
+    if (selectedCel) {
+      distToSelected = haversine(m.lat, m.lon, selectedCel.lat, selectedCel.lon);
+      if (m.celula === selectedCel.nome) {
+        category = 'own';
+        color = '#2563eb';
+        radius = 7;
+      } else if (m.sem_celula && distToSelected <= currentRadiusKm) {
+        category = 'noCell';
+        color = '#10b981';
+        radius = 7;
+      } else if (!m.sem_celula && distToSelected <= currentRadiusKm) {
+        category = 'otherNear';
+        color = '#f59e0b';
+        radius = 7;
+      } else {
+        category = 'allOthers';
+        color = '#9ca3af';
+        radius = 4;
+      }
+    } else {
+      // Overview mode
+      if (m.sem_celula) {
+        category = 'noCell';
+        color = '#10b981';
+        radius = 5.5;
+      } else if (m.pode_remanejar) {
+        category = 'otherNear';
+        color = '#f59e0b';
+        radius = 6;
+      } else {
+        category = 'own';
+        color = '#2563eb';
+        radius = 5.5;
+      }
+    }
+
+    if ((category === 'own' && !filters.own) ||
+        (category === 'otherNear' && !filters.otherNear) ||
+        (category === 'noCell' && !filters.noCell) ||
+        (category === 'allOthers' && !filters.allOthers)) {
+      return;
+    }
+
+    const latJ = jitter(m.lat, m.codigo, 0.0007);
+    const lonJ = jitter(m.lon, m.codigo + 500, 0.0007);
+
+    // If own member in selected cell, draw subtle connecting line
+    if (selectedCel && category === 'own') {
+      L.polyline([[selectedCel.lat, selectedCel.lon], [latJ, lonJ]], {
+        color: '#2563eb',
+        weight: 1.2,
+        opacity: 0.45,
+        dashArray: '3, 4'
+      }).addTo(layerGroup);
+    }
+
+    const marker = L.circleMarker([latJ, lonJ], {
+      radius: radius,
+      fillColor: color,
+      color: '#ffffff',
+      weight: 1.5,
+      opacity: 1,
+      fillOpacity: 0.9
+    });
+
+    let extraInfo = '';
+    if (selectedCel) {
+      extraInfo = `<br><strong>Dist. até ${selectedCel.nome}:</strong> ${distToSelected.toFixed(2)} km`;
+    }
+    if (!m.sem_celula && m.cel_proxima && m.cel_proxima !== m.celula) {
+      extraInfo += `<br><span style="color:#b45309;"><strong>Mais próxima:</strong> ${m.cel_proxima} (${m.dist_proxima.toFixed(2)} km vs ${m.dist_atual.toFixed(2)} km)</span>`;
+    }
+
+    marker.bindPopup(`
+      <div style="font-size:12px; line-height:1.45;">
+        <strong>Membro #${m.codigo}</strong> (ID: ${m.id_membro})<br>
+        <strong>Célula Atual:</strong> ${m.celula}<br>
+        <strong>Endereço:</strong> ${m.rua} (CEP ${m.cep})${extraInfo}
+      </div>
+    `);
+    marker.addTo(layerGroup);
+  });
+
+  // Plot cells on top
+  CELULAS.forEach(c => {
+    const isSel = selectedCel && c.id === selectedCel.id;
+    const latC = c.is_sede_cep ? jitter(c.lat, c.id * 17, 0.0005) : c.lat;
+    const lonC = c.is_sede_cep ? jitter(c.lon, c.id * 31, 0.0005) : c.lon;
+
+    const m = L.marker([latC, lonC], { icon: createHouseIcon(isSel, c.is_sede_cep), zIndexOffset: isSel ? 1000 : 500 });
+    m.bindPopup(`
+      <div style="font-size:12px;">
+        <strong>Célula ${c.nome}</strong><br>
+        CEP: ${c.cep} (${c.localidade})<br>
+        <button onclick="selectCelula(${c.id})" style="margin-top:6px; padding:4px 8px; background:#1e365a; color:#fff; border:none; border-radius:4px; cursor:pointer;">Focar nesta célula</button>
+      </div>
+    `);
+    m.addTo(layerGroup);
+  });
+
+  updateOverlayCard(selectedCel);
+}
+
+function updateOverlayCard(cel) {
+  const titleEl = document.getElementById('overlay-title');
+  const badgeEl = document.getElementById('overlay-badge');
+  const bodyEl = document.getElementById('overlay-body');
+
+  if (!cel) {
+    const vinculados = MEMBROS.filter(m => !m.sem_celula && m.has_coord);
+    const semCel = MEMBROS.filter(m => m.sem_celula && m.has_coord);
+    const remanejar = MEMBROS.filter(m => m.pode_remanejar);
+    const avgAtual = vinculados.reduce((acc, m) => acc + m.dist_atual, 0) / vinculados.length;
+    const avgOtim = vinculados.reduce((acc, m) => acc + m.dist_proxima, 0) / vinculados.length;
+
+    titleEl.innerText = 'Visão Geral da Rede';
+    badgeEl.innerText = '22 Células';
+    bodyEl.innerHTML = `
+      <div class="kpi-grid">
+        <div class="kpi-box">
+          <div class="kpi-val">${vinculados.length}</div>
+          <div class="kpi-lbl">Em Células (c/ mapa)</div>
+        </div>
+        <div class="kpi-box">
+          <div class="kpi-val" style="color:var(--green);">${semCel.length}</div>
+          <div class="kpi-lbl">Sem Célula (c/ mapa)</div>
+        </div>
+        <div class="kpi-box">
+          <div class="kpi-val">${avgAtual.toFixed(2)} km</div>
+          <div class="kpi-lbl">Distância Média Atual</div>
+        </div>
+        <div class="kpi-box">
+          <div class="kpi-val" style="color:var(--amber);">${remanejar.length}</div>
+          <div class="kpi-lbl">Sugestões Remanejamento</div>
+        </div>
+      </div>
+      <p style="font-size:0.76rem; color:var(--muted); margin-bottom:8px;">
+        <strong>Nota sobre CEPs:</strong> 4 células possuem CEP de bairro específico (Adonai, Elohim, Betel e Unidade) e 18 estão agrupadas no CEP 06455-020.
+      </p>
+      <p style="font-size:0.76rem; color:var(--navy);">
+        <i class="fa-solid fa-hand-pointer"></i> Clique em qualquer célula na lista à esquerda para ver o raio de abrangência e os vizinhos próximos.
+      </p>
+    `;
+    return;
+  }
+
+  const ownMembers = MEMBROS.filter(m => m.celula === cel.nome);
+  const ownWithCoord = ownMembers.filter(m => m.has_coord);
+  const avgDist = ownWithCoord.length > 0
+    ? (ownWithCoord.reduce((acc, m) => acc + haversine(m.lat, m.lon, cel.lat, cel.lon), 0) / ownWithCoord.length)
+    : 0;
+
+  const otherNear = MEMBROS.filter(m => !m.sem_celula && m.celula !== cel.nome && m.has_coord && haversine(m.lat, m.lon, cel.lat, cel.lon) <= currentRadiusKm)
+    .map(m => ({ ...m, dSel: haversine(m.lat, m.lon, cel.lat, cel.lon) }))
+    .sort((a, b) => a.dSel - b.dSel);
+
+  const noCellNear = MEMBROS.filter(m => m.sem_celula && m.has_coord && haversine(m.lat, m.lon, cel.lat, cel.lon) <= currentRadiusKm)
+    .map(m => ({ ...m, dSel: haversine(m.lat, m.lon, cel.lat, cel.lon) }))
+    .sort((a, b) => a.dSel - b.dSel);
+
+  titleEl.innerText = 'Célula ' + cel.nome;
+  badgeEl.innerText = cel.cep;
+
+  let html = `
+    <div style="font-size:0.75rem; color:var(--muted); margin-bottom:10px;">${cel.localidade}</div>
+    <div class="kpi-grid">
+      <div class="kpi-box">
+        <div class="kpi-val" style="color:var(--blue);">${ownMembers.length}</div>
+        <div class="kpi-lbl">Membros da Célula</div>
+      </div>
+      <div class="kpi-box">
+        <div class="kpi-val">${avgDist.toFixed(2)} km</div>
+        <div class="kpi-lbl">Distância Média Deles</div>
+      </div>
+      <div class="kpi-box">
+        <div class="kpi-val" style="color:var(--amber);">${otherNear.length}</div>
+        <div class="kpi-lbl">De Outras Células (&le;${currentRadiusKm}km)</div>
+      </div>
+      <div class="kpi-box">
+        <div class="kpi-val" style="color:var(--green);">${noCellNear.length}</div>
+        <div class="kpi-lbl">Sem Célula (&le;${currentRadiusKm}km)</div>
+      </div>
+    </div>
+  `;
+
+  if (otherNear.length > 0) {
+    html += `<div class="mini-list"><h4>Vizinhos de Outras Células (no raio)</h4>`;
+    otherNear.slice(0, 8).forEach(m => {
+      html += `<div class="member-row">
+        <strong>#${m.codigo}</strong> (${m.celula}) — a <strong>${m.dSel.toFixed(2)} km</strong><br>
+        <span style="color:var(--muted);">${m.rua} (CEP ${m.cep})</span>
+      </div>`;
+    });
+    if (otherNear.length > 8) html += `<div style="font-size:0.72rem; color:var(--muted);">+ ${otherNear.length - 8} membros no raio...</div>`;
+    html += `</div>`;
+  }
+
+  if (noCellNear.length > 0) {
+    html += `<div class="mini-list"><h4>Sem Célula Próximos (no raio)</h4>`;
+    noCellNear.slice(0, 8).forEach(m => {
+      html += `<div class="member-row">
+        <strong>#${m.codigo}</strong> — a <strong>${m.dSel.toFixed(2)} km</strong><br>
+        <span style="color:var(--muted);">${m.rua} (CEP ${m.cep})</span>
+      </div>`;
+    });
+    if (noCellNear.length > 8) html += `<div style="font-size:0.72rem; color:var(--muted);">+ ${noCellNear.length - 8} membros sem célula...</div>`;
+    html += `</div>`;
+  }
+
+  bodyEl.innerHTML = html;
+}
+
+function renderStatsTables() {
+  const vinculados = MEMBROS.filter(m => !m.sem_celula && m.has_coord);
+  const semCel = MEMBROS.filter(m => m.sem_celula && m.has_coord);
+  const remanejar = MEMBROS.filter(m => m.pode_remanejar).sort((a, b) => (b.dist_atual - b.dist_proxima) - (a.dist_atual - a.dist_proxima));
+
+  const avgAtual = vinculados.reduce((acc, m) => acc + m.dist_atual, 0) / vinculados.length;
+  const avgOtim = vinculados.reduce((acc, m) => acc + m.dist_proxima, 0) / vinculados.length;
+  const pctReducao = ((avgAtual - avgOtim) / avgAtual * 100).toFixed(1);
+
+  document.getElementById('top-kpis').innerHTML = `
+    <div class="big-kpi">
+      <div class="num">${vinculados.length} / 286</div>
+      <div class="title">Membros em Células Geocodificados</div>
+      <div class="sub">${semCel.length} sem célula também mapeados</div>
+    </div>
+    <div class="big-kpi">
+      <div class="num">${avgAtual.toFixed(2)} km</div>
+      <div class="title">Distância Média Atual</div>
+      <div class="sub">Trajeto casa &rarr; célula atual</div>
+    </div>
+    <div class="big-kpi">
+      <div class="num" style="color:var(--green);">${avgOtim.toFixed(2)} km</div>
+      <div class="title">Distância Média Otimizada</div>
+      <div class="sub">Redução de ${pctReducao}% na distância</div>
+    </div>
+    <div class="big-kpi">
+      <div class="num" style="color:var(--amber);">${remanejar.length}</div>
+      <div class="title">Candidatos a Remanejamento</div>
+      <div class="sub">Economia &ge; 0,5 km por membro</div>
+    </div>
+  `;
+
+  const tbodyCel = document.querySelector('#table-celulas tbody');
+  tbodyCel.innerHTML = '';
+  CELULAS.forEach(c => {
+    const own = MEMBROS.filter(m => m.celula === c.nome);
+    const ownCoord = own.filter(m => m.has_coord);
+    const avg = ownCoord.length ? (ownCoord.reduce((s, m) => s + m.dist_atual, 0) / ownCoord.length).toFixed(2) + ' km' : '-';
+    const longe = ownCoord.filter(m => m.dist_atual > 3).length;
+    const vizOutros = MEMBROS.filter(m => !m.sem_celula && m.celula !== c.nome && m.has_coord && haversine(m.lat, m.lon, c.lat, c.lon) <= currentRadiusKm).length;
+    const vizSem = MEMBROS.filter(m => m.sem_celula && m.has_coord && haversine(m.lat, m.lon, c.lat, c.lon) <= currentRadiusKm).length;
+
+    tbodyCel.innerHTML += `
+      <tr>
+        <td><strong>${c.nome}</strong></td>
+        <td>${c.cep} <span style="color:var(--muted); font-size:0.72rem;">(${c.localidade})</span></td>
+        <td><strong>${own.length}</strong></td>
+        <td>${avg}</td>
+        <td>${longe > 0 ? `<span class="tag tag-amber">${longe}</span>` : '0'}</td>
+        <td><span class="tag tag-blue">${vizOutros}</span></td>
+        <td><span class="tag tag-green">${vizSem}</span></td>
+      </tr>
+    `;
+  });
+
+  const tbodyRem = document.querySelector('#table-remanejamento tbody');
+  tbodyRem.innerHTML = '';
+  remanejar.forEach(m => {
+    const econ = (m.dist_atual - m.dist_proxima).toFixed(2);
+    tbodyRem.innerHTML += `
+      <tr>
+        <td><strong>#${m.codigo}</strong></td>
+        <td>${m.cep} — ${m.rua}</td>
+        <td>${m.celula}</td>
+        <td>${m.dist_atual.toFixed(2)} km</td>
+        <td><strong>${m.cel_proxima}</strong></td>
+        <td>${m.dist_proxima.toFixed(2)} km</td>
+        <td><span class="tag tag-green">-${econ} km</span></td>
+      </tr>
+    `;
+  });
+}
+
+function exportCSV() {
+  let csv = '\uFEFFCodigo;ID_Membro;CEP;Rua;Celula_Atual;Distancia_Atual_km;Celula_Mais_Proxima;Nova_Distancia_km;Economia_km;Sugestao_Remanejamento\n';
+  MEMBROS.forEach(m => {
+    const econ = (m.dist_atual !== null && m.dist_proxima !== null) ? (m.dist_atual - m.dist_proxima).toFixed(2) : '';
+    csv += `${m.codigo};${m.id_membro};${m.cep};"${m.rua}";"${m.celula}";${m.dist_atual ?? ''};"${m.cel_proxima ?? ''}";${m.dist_proxima ?? ''};${econ};${m.pode_remanejar ? 'SIM' : 'NAO'}\n`;
+  });
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'analise_remanejamento_celulas_maanaim.csv';
+  a.click();
+}
+
+// Init
+renderCelulaList();
+renderMap();
+</script>
+</body>
+</html>
